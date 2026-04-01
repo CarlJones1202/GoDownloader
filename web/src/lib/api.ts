@@ -106,6 +106,7 @@ export const images = {
 export const videos = {
   list: (params: ImageListParams = {}) =>
     request<Image[]>(`/videos${qs(params)}`),
+  delete: (id: number) => request<void>(`/images/${id}`, { method: 'DELETE' }),
 };
 
 // ---------- People ----------

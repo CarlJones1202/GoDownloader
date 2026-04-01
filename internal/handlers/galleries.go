@@ -2,8 +2,12 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 
+	"github.com/carlj/godownload/internal/config"
 	"github.com/carlj/godownload/internal/database"
 	"github.com/carlj/godownload/internal/models"
 	"github.com/gin-gonic/gin"
@@ -11,12 +15,13 @@ import (
 
 // GalleryHandler handles HTTP requests for the /api/v1/galleries resource.
 type GalleryHandler struct {
-	db *database.DB
+	db      *database.DB
+	storage config.StorageConfig
 }
 
 // NewGalleryHandler creates a GalleryHandler.
-func NewGalleryHandler(db *database.DB) *GalleryHandler {
-	return &GalleryHandler{db: db}
+func NewGalleryHandler(db *database.DB, storage config.StorageConfig) *GalleryHandler {
+	return &GalleryHandler{db: db, storage: storage}
 }
 
 // RegisterRoutes registers all gallery routes on the given group.
@@ -170,7 +175,40 @@ func (h *GalleryHandler) delete(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.db.DeleteGallery(c.Request.Context(), id); err != nil {
+
+	ctx := c.Request.Context()
+
+	// List all images in the gallery so we can delete their files from disk
+	// before the cascade delete removes the DB rows.
+	galleryImages, err := h.db.ListImages(ctx, database.ImageFilter{GalleryID: &id, Limit: 100_000})
+	if err != nil {
+		slog.Warn("delete gallery: failed to list images for file cleanup", "gallery_id", id, "error", err)
+		// Continue — we still want to delete the DB records even if file listing fails.
+	}
+
+	// Delete each image file from disk.
+	for _, img := range galleryImages {
+		dir := h.storage.ImagesDir
+		if img.IsVideo {
+			dir = h.storage.VideosDir
+		}
+		fp := filepath.Join(dir, img.Filename)
+		if err := os.Remove(fp); err != nil && !os.IsNotExist(err) {
+			slog.Warn("delete gallery: failed to remove file", "path", fp, "error", err)
+		}
+	}
+
+	// Delete the gallery thumbnail if it exists.
+	gallery, err := h.db.GetGallery(ctx, id)
+	if err == nil && gallery.LocalThumbnailPath != nil && *gallery.LocalThumbnailPath != "" {
+		tp := filepath.Join(h.storage.ThumbnailsDir, *gallery.LocalThumbnailPath)
+		if err := os.Remove(tp); err != nil && !os.IsNotExist(err) {
+			slog.Warn("delete gallery: failed to remove thumbnail", "path", tp, "error", err)
+		}
+	}
+
+	// Delete the gallery row; SQLite ON DELETE CASCADE removes images, gallery_persons, etc.
+	if err := h.db.DeleteGallery(ctx, id); err != nil {
 		handleDBError(c, err)
 		return
 	}

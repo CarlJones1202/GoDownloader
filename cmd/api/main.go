@@ -73,7 +73,7 @@ func main() {
 
 	autoLinker := linker.New(db)
 
-	router := buildRouter(db, crawlerSvc, queueMgr, autoLinker, enricher)
+	router := buildRouter(db, crawlerSvc, queueMgr, autoLinker, enricher, cfg.Storage)
 
 	srv := &http.Server{
 		Addr:         cfg.Addr(),
@@ -111,7 +111,7 @@ func main() {
 }
 
 // buildRouter wires up all routes and returns the configured gin.Engine.
-func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.Manager, al *linker.AutoLinker, enricher *providers.Enricher) *gin.Engine {
+func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.Manager, al *linker.AutoLinker, enricher *providers.Enricher, storage config.StorageConfig) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.New()
@@ -122,8 +122,8 @@ func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.M
 	v1 := r.Group("/api/v1")
 
 	handlers.NewSourceHandler(db, crawlerSvc).RegisterRoutes(v1.Group("/sources"))
-	handlers.NewGalleryHandler(db).RegisterRoutes(v1.Group("/galleries"))
-	handlers.NewImageHandler(db).RegisterRoutes(v1.Group("/images"))
+	handlers.NewGalleryHandler(db, storage).RegisterRoutes(v1.Group("/galleries"))
+	handlers.NewImageHandler(db, storage).RegisterRoutes(v1.Group("/images"))
 	handlers.NewVideoHandler(db).RegisterRoutes(v1.Group("/videos"))
 	handlers.NewPeopleHandler(db, al, enricher).RegisterRoutes(v1.Group("/people"))
 	handlers.NewAdminHandler(db, crawlerSvc, queueMgr).RegisterRoutes(v1.Group("/admin"))
@@ -132,6 +132,12 @@ func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.M
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	// Serve downloaded media files (images, thumbnails, videos) from the
+	// data/ directory so the frontend can display them via /data/images/...
+	r.Static("/data/images", "data/images")
+	r.Static("/data/thumbnails", "data/thumbnails")
+	r.Static("/data/videos", "data/videos")
 
 	// Serve the React SPA from web/dist/ when available.
 	// Any request that does not match an API route or a static file is

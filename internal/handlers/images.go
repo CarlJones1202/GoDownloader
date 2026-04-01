@@ -2,9 +2,13 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 
+	"github.com/carlj/godownload/internal/config"
 	"github.com/carlj/godownload/internal/database"
 	"github.com/carlj/godownload/internal/models"
 	"github.com/gin-gonic/gin"
@@ -12,12 +16,13 @@ import (
 
 // ImageHandler handles HTTP requests for the /api/v1/images resource.
 type ImageHandler struct {
-	db *database.DB
+	db      *database.DB
+	storage config.StorageConfig
 }
 
 // NewImageHandler creates an ImageHandler.
-func NewImageHandler(db *database.DB) *ImageHandler {
-	return &ImageHandler{db: db}
+func NewImageHandler(db *database.DB, storage config.StorageConfig) *ImageHandler {
+	return &ImageHandler{db: db, storage: storage}
 }
 
 // RegisterRoutes registers all image routes on the given group.
@@ -77,7 +82,29 @@ func (h *ImageHandler) delete(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.db.DeleteImage(c.Request.Context(), id); err != nil {
+
+	ctx := c.Request.Context()
+
+	// Fetch the image first so we can delete the file from disk.
+	img, err := h.db.GetImage(ctx, id)
+	if err != nil {
+		handleDBError(c, err)
+		return
+	}
+
+	// Determine the storage directory based on whether it's a video or image.
+	dir := h.storage.ImagesDir
+	if img.IsVideo {
+		dir = h.storage.VideosDir
+	}
+
+	// Delete the file from disk. Log but don't fail if the file is already gone.
+	filePath := filepath.Join(dir, img.Filename)
+	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+		slog.Warn("delete: failed to remove file", "path", filePath, "error", err)
+	}
+
+	if err := h.db.DeleteImage(ctx, id); err != nil {
 		handleDBError(c, err)
 		return
 	}

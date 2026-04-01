@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { galleries } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import {
@@ -11,11 +11,16 @@ import {
   Input,
   Pagination,
   Badge,
+  Button,
+  ConfirmDialog,
 } from '@/components/UI';
+import { Trash2 } from 'lucide-react';
 
 export function GalleriesPage() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [offset, setOffset] = useState(0);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const limit = 50;
 
   const { data: galleryList, isLoading } = useQuery({
@@ -26,6 +31,14 @@ export function GalleriesPage() {
         limit,
         offset,
       }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => galleries.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['galleries'] });
+      setConfirmDeleteId(null);
+    },
   });
 
   return (
@@ -51,9 +64,9 @@ export function GalleriesPage() {
         <>
           <div className="space-y-2">
             {galleryList.map((g) => (
-              <Link key={g.id} to={`/galleries/${g.id}`}>
-                <Card className="hover:border-zinc-600 transition-colors cursor-pointer">
-                  <div className="flex items-center gap-4">
+              <Card key={g.id} className="hover:border-zinc-600 transition-colors">
+                <div className="flex items-center gap-4">
+                  <Link to={`/galleries/${g.id}`} className="flex items-center gap-4 min-w-0 flex-1">
                     {g.local_thumbnail_path ? (
                       <img
                         src={`/data/thumbnails/${g.local_thumbnail_path}`}
@@ -61,7 +74,7 @@ export function GalleriesPage() {
                         className="w-16 h-12 object-cover rounded"
                       />
                     ) : (
-                      <div className="w-16 h-12 bg-zinc-800 rounded flex items-center justify-center text-zinc-600 text-xs">
+                      <div className="w-16 h-12 bg-zinc-800 rounded flex items-center justify-center text-zinc-600 text-xs shrink-0">
                         No img
                       </div>
                     )}
@@ -74,9 +87,21 @@ export function GalleriesPage() {
                         <span className="text-xs text-zinc-500">{formatDate(g.created_at)}</span>
                       </div>
                     </div>
-                  </div>
-                </Card>
-              </Link>
+                  </Link>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    title="Delete gallery"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setConfirmDeleteId(g.id);
+                    }}
+                    className="shrink-0"
+                  >
+                    <Trash2 size={14} className="text-zinc-500 hover:text-red-400" />
+                  </Button>
+                </div>
+              </Card>
             ))}
           </div>
 
@@ -89,6 +114,19 @@ export function GalleriesPage() {
           />
         </>
       )}
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        title="Delete Gallery"
+        message="Delete this gallery and all its images? Files will be removed from disk. This cannot be undone."
+        confirmLabel="Delete Gallery"
+        onConfirm={() => {
+          if (confirmDeleteId !== null) {
+            deleteMut.mutate(confirmDeleteId);
+          }
+        }}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </>
   );
 }

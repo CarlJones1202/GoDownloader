@@ -1,4 +1,5 @@
-import { useParams, Link } from 'react-router-dom';
+import { useState } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { galleries, images as imagesApi } from '@/lib/api';
 import { formatDate, parseColors } from '@/lib/utils';
@@ -8,14 +9,20 @@ import {
   Spinner,
   EmptyState,
   Badge,
+  Button,
+  ConfirmDialog,
 } from '@/components/UI';
-import { Heart, ArrowLeft } from 'lucide-react';
+import { Heart, ArrowLeft, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function GalleryDetailPage() {
   const { id } = useParams<{ id: string }>();
   const galleryId = Number(id);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  const [confirmDeleteGallery, setConfirmDeleteGallery] = useState(false);
+  const [confirmDeleteImageId, setConfirmDeleteImageId] = useState<number | null>(null);
 
   const { data: gallery, isLoading: loadingGallery } = useQuery({
     queryKey: ['gallery', galleryId],
@@ -31,6 +38,22 @@ export function GalleryDetailPage() {
     mutationFn: (imgId: number) => imagesApi.toggleFavorite(imgId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['images', { gallery_id: galleryId }] });
+    },
+  });
+
+  const deleteGalleryMut = useMutation({
+    mutationFn: () => galleries.delete(galleryId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['galleries'] });
+      navigate('/galleries');
+    },
+  });
+
+  const deleteImageMut = useMutation({
+    mutationFn: (imgId: number) => imagesApi.delete(imgId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['images', { gallery_id: galleryId }] });
+      setConfirmDeleteImageId(null);
     },
   });
 
@@ -50,6 +73,13 @@ export function GalleryDetailPage() {
 
       <PageHeader title={gallery.title || `Gallery #${gallery.id}`}>
         {gallery.provider && <Badge>{gallery.provider}</Badge>}
+        <Button
+          variant="danger"
+          size="sm"
+          onClick={() => setConfirmDeleteGallery(true)}
+        >
+          <Trash2 size={14} /> Delete Gallery
+        </Button>
       </PageHeader>
 
       <div className="text-xs text-zinc-500 mb-6 space-y-1">
@@ -86,20 +116,32 @@ export function GalleryDetailPage() {
                 {/* Overlay controls */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2">
                   <div className="flex items-center justify-between w-full">
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        favMut.mutate(img.id);
-                      }}
-                      className="p-1"
-                    >
-                      <Heart
-                        size={16}
-                        className={cn(
-                          img.is_favorite ? 'fill-red-500 text-red-500' : 'text-white',
-                        )}
-                      />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          favMut.mutate(img.id);
+                        }}
+                        className="p-1"
+                      >
+                        <Heart
+                          size={16}
+                          className={cn(
+                            img.is_favorite ? 'fill-red-500 text-red-500' : 'text-white',
+                          )}
+                        />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setConfirmDeleteImageId(img.id);
+                        }}
+                        className="p-1"
+                        title="Delete image"
+                      >
+                        <Trash2 size={16} className="text-white hover:text-red-400" />
+                      </button>
+                    </div>
                     {img.is_video && <Badge variant="info">Video</Badge>}
                   </div>
                 </div>
@@ -116,6 +158,29 @@ export function GalleryDetailPage() {
           })}
         </div>
       )}
+
+      {/* Confirm dialogs */}
+      <ConfirmDialog
+        open={confirmDeleteGallery}
+        title="Delete Gallery"
+        message="Delete this gallery and all its images? Files will be removed from disk. This cannot be undone."
+        confirmLabel="Delete Gallery"
+        onConfirm={() => deleteGalleryMut.mutate()}
+        onCancel={() => setConfirmDeleteGallery(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteImageId !== null}
+        title="Delete Image"
+        message="Delete this image? The file will be removed from disk. This cannot be undone."
+        confirmLabel="Delete Image"
+        onConfirm={() => {
+          if (confirmDeleteImageId !== null) {
+            deleteImageMut.mutate(confirmDeleteImageId);
+          }
+        }}
+        onCancel={() => setConfirmDeleteImageId(null)}
+      />
     </>
   );
 }

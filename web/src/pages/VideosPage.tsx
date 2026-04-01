@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { videos } from '@/lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { videos, images as imagesApi } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import {
   PageHeader,
@@ -8,16 +8,29 @@ import {
   Spinner,
   EmptyState,
   Badge,
+  Button,
   Pagination,
+  ConfirmDialog,
 } from '@/components/UI';
+import { Trash2 } from 'lucide-react';
 
 export function VideosPage() {
+  const queryClient = useQueryClient();
   const [offset, setOffset] = useState(0);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const limit = 50;
 
   const { data: videoList, isLoading } = useQuery({
     queryKey: ['videos', { offset, limit }],
     queryFn: () => videos.list({ limit, offset }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => imagesApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['videos'] });
+      setConfirmDeleteId(null);
+    },
   });
 
   return (
@@ -51,6 +64,15 @@ export function VideosPage() {
                     <span className="text-xs text-zinc-500">{formatDate(vid.created_at)}</span>
                   </div>
                 </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  title="Delete video"
+                  onClick={() => setConfirmDeleteId(vid.id)}
+                  className="shrink-0"
+                >
+                  <Trash2 size={14} className="text-zinc-500 hover:text-red-400" />
+                </Button>
               </Card>
             ))}
           </div>
@@ -64,6 +86,19 @@ export function VideosPage() {
           />
         </>
       )}
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        title="Delete Video"
+        message="Delete this video? The file will be removed from disk. This cannot be undone."
+        confirmLabel="Delete Video"
+        onConfirm={() => {
+          if (confirmDeleteId !== null) {
+            deleteMut.mutate(confirmDeleteId);
+          }
+        }}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </>
   );
 }

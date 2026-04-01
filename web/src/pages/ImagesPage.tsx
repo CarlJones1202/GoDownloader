@@ -10,8 +10,9 @@ import {
   Input,
   Button,
   Pagination,
+  ConfirmDialog,
 } from '@/components/UI';
-import { Heart, Download, Search, Palette } from 'lucide-react';
+import { Heart, Download, Search, Palette, Trash2 } from 'lucide-react';
 
 export function ImagesPage() {
   const queryClient = useQueryClient();
@@ -19,6 +20,7 @@ export function ImagesPage() {
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [colorSearch, setColorSearch] = useState('');
   const [activeColorSearch, setActiveColorSearch] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const limit = 50;
 
   // Regular list query
@@ -50,6 +52,14 @@ export function ImagesPage() {
 
   const redownloadMut = useMutation({
     mutationFn: (id: number) => images.redownload(id),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => images.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['images'] });
+      setConfirmDeleteId(null);
+    },
   });
 
   const handleColorSearch = () => {
@@ -150,6 +160,13 @@ export function ImagesPage() {
                         <button onClick={() => redownloadMut.mutate(img.id)} className="p-1" title="Re-download">
                           <Download size={16} className="text-white" />
                         </button>
+                        <button
+                          onClick={() => setConfirmDeleteId(img.id)}
+                          className="p-1"
+                          title="Delete image"
+                        >
+                          <Trash2 size={16} className="text-white hover:text-red-400" />
+                        </button>
                       </div>
                       {img.width && img.height && (
                         <span className="text-[10px] text-white/70">
@@ -182,6 +199,19 @@ export function ImagesPage() {
           )}
         </>
       )}
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        title="Delete Image"
+        message="Delete this image? The file will be removed from disk. This cannot be undone."
+        confirmLabel="Delete Image"
+        onConfirm={() => {
+          if (confirmDeleteId !== null) {
+            deleteMut.mutate(confirmDeleteId);
+          }
+        }}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </>
   );
 }
