@@ -1,0 +1,35 @@
+package crawler
+
+import (
+	"context"
+	"regexp"
+)
+
+// JKForum parses thread pages from jkforum.net.
+//
+// JKForum uses a vBulletin-like layout. Posts are inside
+// <div id="post_message_XXX"> tags, and image links follow the same
+// pattern as ViperGirls.
+type JKForum struct{}
+
+// jkPostRe captures individual posts.
+var jkPostRe = regexp.MustCompile(`(?s)<div[^>]+id="post_message_\d+"[^>]*>(.*?)</div>`)
+
+// jkTitleRe tries to extract a gallery title from the post.
+var jkTitleRe = regexp.MustCompile(`(?i)<(?:b|strong)>([^<]{3,80})</(?:b|strong)>`)
+
+// jkLinkRe captures image host links (same set as ViperGirls).
+var jkLinkRe = regexp.MustCompile(`(?i)<a[^>]+href="(https?://(?:www\.)?(?:imagebam\.com|imgbox\.com|imx\.to|turboimagehost\.com|vipr\.im|pixhost\.to|postimages\.org|postimg\.cc|imagetwist\.com|acidimg\.cc|mymypic\.net)[^"]*)"`)
+
+// NewJKForum creates a JKForum parser.
+func NewJKForum() *JKForum { return &JKForum{} }
+
+// Hosts implements SourceParser.
+func (j *JKForum) Hosts() []string {
+	return []string{"jkforum.net", "www.jkforum.net"}
+}
+
+// Parse implements SourceParser.
+func (j *JKForum) Parse(_ context.Context, body, _ string) (map[string][]string, error) {
+	return parseForumPosts(body, jkPostRe, jkTitleRe, jkLinkRe)
+}
