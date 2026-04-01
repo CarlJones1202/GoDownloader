@@ -26,6 +26,7 @@ import (
 	"github.com/carlj/godownload/internal/services/queue/processors"
 	"github.com/carlj/godownload/internal/services/ripper"
 	ripperproviders "github.com/carlj/godownload/internal/services/ripper/providers"
+	"github.com/carlj/godownload/internal/services/workers"
 	"github.com/carlj/godownload/internal/utils"
 	"github.com/gin-gonic/gin"
 )
@@ -66,8 +67,10 @@ func main() {
 
 	enricher := providers.NewEnricher(httpClient, cfg.Crawler.UserAgent, "")
 
+	thumbWorker := workers.NewThumbnailWorker(db, cfg.Storage.ImagesDir, cfg.Storage.ThumbnailsDir)
+
 	queueMgr := queue.New(db, cfg.Crawler.Workers, cfg.Crawler.MaxRetries)
-	processors.New(db, ripperReg, *cfg).Register(queueMgr)
+	processors.New(db, ripperReg, *cfg, thumbWorker).Register(queueMgr)
 	queueMgr.Start()
 	defer queueMgr.Stop()
 

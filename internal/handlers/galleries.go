@@ -186,7 +186,7 @@ func (h *GalleryHandler) delete(c *gin.Context) {
 		// Continue — we still want to delete the DB records even if file listing fails.
 	}
 
-	// Delete each image file from disk.
+	// Delete each image file and its thumbnail from disk.
 	for _, img := range galleryImages {
 		dir := h.storage.ImagesDir
 		if img.IsVideo {
@@ -195,6 +195,15 @@ func (h *GalleryHandler) delete(c *gin.Context) {
 		fp := filepath.Join(dir, img.Filename)
 		if err := os.Remove(fp); err != nil && !os.IsNotExist(err) {
 			slog.Warn("delete gallery: failed to remove file", "path", fp, "error", err)
+		}
+
+		// Remove corresponding thumbnail.
+		if !img.IsVideo {
+			thumbName := thumbnailFilename(img.Filename)
+			tp := filepath.Join(h.storage.ThumbnailsDir, thumbName)
+			if err := os.Remove(tp); err != nil && !os.IsNotExist(err) {
+				slog.Warn("delete gallery: failed to remove thumbnail", "path", tp, "error", err)
+			}
 		}
 	}
 

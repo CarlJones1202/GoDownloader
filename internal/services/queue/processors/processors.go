@@ -22,18 +22,20 @@ import (
 	"github.com/carlj/godownload/internal/models"
 	"github.com/carlj/godownload/internal/services/queue"
 	"github.com/carlj/godownload/internal/services/ripper"
+	"github.com/carlj/godownload/internal/services/workers"
 )
 
 // Processors holds all queue processor implementations.
 type Processors struct {
-	db  *database.DB
-	reg *ripper.Registry
-	cfg config.Config
+	db    *database.DB
+	reg   *ripper.Registry
+	cfg   config.Config
+	thumb *workers.ThumbnailWorker
 }
 
 // New creates a Processors instance.
-func New(db *database.DB, reg *ripper.Registry, cfg config.Config) *Processors {
-	return &Processors{db: db, reg: reg, cfg: cfg}
+func New(db *database.DB, reg *ripper.Registry, cfg config.Config, thumb *workers.ThumbnailWorker) *Processors {
+	return &Processors{db: db, reg: reg, cfg: cfg, thumb: thumb}
 }
 
 // Register binds all processors to the queue Manager.
@@ -85,6 +87,9 @@ func (p *Processors) processImage(ctx context.Context, item *models.DownloadQueu
 			"filename", res.Filename,
 			"hash", res.FileHash,
 		)
+
+		// Generate thumbnail and set as gallery cover (first-image-wins).
+		p.generateThumbnail(ctx, img)
 	}
 
 	return nil
@@ -188,6 +193,9 @@ func (p *Processors) processGallery(ctx context.Context, item *models.DownloadQu
 			slog.Error("processor: saving gallery image", "error", err, "file", res.Filename)
 			continue
 		}
+
+		// Generate thumbnail and set as gallery cover (first-image-wins).
+		p.generateThumbnail(ctx, img)
 	}
 
 	slog.Info("processor: gallery processed",
@@ -222,4 +230,38 @@ func isVideoContentType(ct string) bool {
 		strings.Contains(ct, "webm") ||
 		strings.Contains(ct, "avi") ||
 		strings.Contains(ct, "mkv")
+}
+
+// generateThumbnail runs the ThumbnailWorker for a freshly saved image and,
+// on success, sets it as the gallery cover thumbnail (first-image-wins).
+func (p *Processors) generateThumbnail(ctx context.Context, img *models.Image) {
+	if p.thumb == nil {
+		return
+	}
+
+	// Skip video files — thumbnail generation only applies to images.
+	if img.IsVideo {
+		return
+	}
+
+	if err := p.thumb.GenerateForImage(ctx, img); err != nil {
+		slog.Warn("processor: thumbnail generation failed", "image_id", img.ID, "error", err)
+		return
+	}
+
+	// Set as gallery thumbnail (first-image-wins via SetGalleryThumbnail).
+	if img.GalleryID != nil {
+		thumbFilename := thumbnailName(img.Filename)
+		if err := p.db.SetGalleryThumbnail(ctx, *img.GalleryID, thumbFilename); err != nil {
+			slog.Warn("processor: setting gallery thumbnail", "gallery_id", *img.GalleryID, "error", err)
+		}
+	}
+}
+
+// thumbnailName returns the thumbnail filename for a given image filename.
+// Must match the convention in workers.ThumbnailWorker.
+func thumbnailName(filename string) string {
+	ext := filepath.Ext(filename)
+	base := strings.TrimSuffix(filename, ext)
+	return base + "_thumb.jpg"
 }

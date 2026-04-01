@@ -272,7 +272,13 @@ func (c *Crawler) process(j job) {
 	// Create galleries and enqueue image downloads.
 	totalImages := 0
 	for title, imageLinks := range galleries {
-		galleryID, err := c.ensureGallery(ctx, src.ID, title, src.URL)
+		// Prefix the gallery title with the source name for context.
+		galleryTitle := title
+		if src.Name != "" {
+			galleryTitle = src.Name + " - " + title
+		}
+
+		galleryID, err := c.ensureGallery(ctx, src.ID, galleryTitle, src.URL)
 		if err != nil {
 			slog.Error("crawler: creating gallery",
 				"error", err,

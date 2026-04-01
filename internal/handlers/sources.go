@@ -3,6 +3,8 @@ package handlers
 
 import (
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/carlj/godownload/internal/database"
 	"github.com/carlj/godownload/internal/models"
@@ -32,7 +34,7 @@ func (h *SourceHandler) RegisterRoutes(rg *gin.RouterGroup) {
 
 // createSourceRequest is the JSON body for source creation.
 type createSourceRequest struct {
-	URL      string `json:"url"      binding:"required,url"`
+	URL      string `json:"url"      binding:"required"`
 	Name     string `json:"name"     binding:"required"`
 	Enabled  *bool  `json:"enabled"`
 	Priority int    `json:"priority"`
@@ -51,6 +53,13 @@ func (h *SourceHandler) create(c *gin.Context) {
 	var req createSourceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respondError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Validate URL: must be a valid absolute URL with http or https scheme.
+	u, err := url.Parse(req.URL)
+	if err != nil || u.Host == "" || !strings.HasPrefix(u.Scheme, "http") {
+		respondError(c, http.StatusBadRequest, "url must be a valid HTTP or HTTPS URL")
 		return
 	}
 

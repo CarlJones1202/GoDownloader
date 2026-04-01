@@ -113,6 +113,20 @@ func (db *DB) DeleteGallery(ctx context.Context, id int64) error {
 	return nil
 }
 
+// SetGalleryThumbnail sets the local_thumbnail_path for a gallery, but only
+// if it does not already have one (first-image-wins).
+func (db *DB) SetGalleryThumbnail(ctx context.Context, galleryID int64, thumbPath string) error {
+	_, err := db.ExecContext(ctx,
+		`UPDATE galleries SET local_thumbnail_path = ?
+		  WHERE id = ? AND (local_thumbnail_path IS NULL OR local_thumbnail_path = '')`,
+		thumbPath, galleryID,
+	)
+	if err != nil {
+		return fmt.Errorf("setting gallery %d thumbnail: %w", galleryID, err)
+	}
+	return nil
+}
+
 // CountGalleries returns the total number of galleries.
 func (db *DB) CountGalleries(ctx context.Context) (int64, error) {
 	var count int64

@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { images } from '@/lib/api';
-import { cn, parseColors } from '@/lib/utils';
+import { cn, parseColors, thumbnailUrl } from '@/lib/utils';
 import {
   PageHeader,
   Card,
@@ -12,6 +12,9 @@ import {
   Pagination,
   ConfirmDialog,
 } from '@/components/UI';
+import { JustifiedGrid } from '@/components/JustifiedGrid';
+import type { JustifiedItem } from '@/components/JustifiedGrid';
+import { Lightbox } from '@/components/Lightbox';
 import { Heart, Download, Search, Palette, Trash2 } from 'lucide-react';
 
 export function ImagesPage() {
@@ -21,6 +24,7 @@ export function ImagesPage() {
   const [colorSearch, setColorSearch] = useState('');
   const [activeColorSearch, setActiveColorSearch] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const limit = 50;
 
   // Regular list query
@@ -79,6 +83,84 @@ export function ImagesPage() {
 
   const loading = activeColorSearch ? isColorLoading : isLoading;
 
+  // Build justified grid items.
+  const gridItems: JustifiedItem[] = useMemo(() => {
+    return displayImages.map((img) => {
+      const colors = parseColors(img.dominant_colors);
+      return {
+        id: img.id,
+        src: `/data/images/${img.filename}`,
+        thumbSrc: thumbnailUrl(img.filename),
+        width: img.width,
+        height: img.height,
+        overlay: (
+          <div className="flex flex-col justify-end h-full bg-gradient-to-t from-black/60 to-transparent p-2">
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    favMut.mutate(img.id);
+                  }}
+                  className="p-1"
+                >
+                  <Heart
+                    size={16}
+                    className={cn(
+                      img.is_favorite ? 'fill-red-500 text-red-500' : 'text-white',
+                    )}
+                  />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    redownloadMut.mutate(img.id);
+                  }}
+                  className="p-1"
+                  title="Re-download"
+                >
+                  <Download size={16} className="text-white" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmDeleteId(img.id);
+                  }}
+                  className="p-1"
+                  title="Delete image"
+                >
+                  <Trash2 size={16} className="text-white hover:text-red-400" />
+                </button>
+              </div>
+              <div className="flex items-center gap-1">
+                {img.width && img.height && (
+                  <span className="text-[10px] text-white/70">
+                    {img.width}x{img.height}
+                  </span>
+                )}
+                {colors.length > 0 && (
+                  <div className="flex h-2 rounded overflow-hidden">
+                    {colors.map((c, i) => (
+                      <div key={i} className="w-2" style={{ backgroundColor: c }} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ),
+      };
+    });
+  }, [displayImages, favMut, redownloadMut]);
+
+  // Build lightbox images.
+  const lightboxImages = useMemo(() => {
+    return displayImages.map((img) => ({
+      src: `/data/images/${img.filename}`,
+      alt: img.filename,
+    }));
+  }, [displayImages]);
+
   return (
     <>
       <PageHeader title="Images" description="Browse and manage images">
@@ -132,61 +214,12 @@ export function ImagesPage() {
         <EmptyState message="No images found." />
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {displayImages.map((img) => {
-              const colors = parseColors(img.dominant_colors);
-              return (
-                <Card key={img.id} className="p-0 overflow-hidden group relative">
-                  <div className="aspect-[4/3] bg-zinc-800">
-                    <img
-                      src={`/data/images/${img.filename}`}
-                      alt={img.filename}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
-                  </div>
-                  {/* Overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2">
-                    <div className="flex items-center justify-between w-full">
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => favMut.mutate(img.id)} className="p-1">
-                          <Heart
-                            size={16}
-                            className={cn(
-                              img.is_favorite ? 'fill-red-500 text-red-500' : 'text-white',
-                            )}
-                          />
-                        </button>
-                        <button onClick={() => redownloadMut.mutate(img.id)} className="p-1" title="Re-download">
-                          <Download size={16} className="text-white" />
-                        </button>
-                        <button
-                          onClick={() => setConfirmDeleteId(img.id)}
-                          className="p-1"
-                          title="Delete image"
-                        >
-                          <Trash2 size={16} className="text-white hover:text-red-400" />
-                        </button>
-                      </div>
-                      {img.width && img.height && (
-                        <span className="text-[10px] text-white/70">
-                          {img.width}x{img.height}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {/* Color bar */}
-                  {colors.length > 0 && (
-                    <div className="flex h-1">
-                      {colors.map((c, i) => (
-                        <div key={i} className="flex-1" style={{ backgroundColor: c }} />
-                      ))}
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
+          <JustifiedGrid
+            items={gridItems}
+            rowHeight={220}
+            gap={4}
+            onItemClick={(index) => setLightboxIndex(index)}
+          />
 
           {!activeColorSearch && (
             <Pagination
@@ -198,6 +231,16 @@ export function ImagesPage() {
             />
           )}
         </>
+      )}
+
+      {/* Lightbox */}
+      {lightboxIndex !== null && (
+        <Lightbox
+          images={lightboxImages}
+          index={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onIndexChange={setLightboxIndex}
+        />
       )}
 
       <ConfirmDialog

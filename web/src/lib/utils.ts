@@ -34,3 +34,11 @@ export function parseColors(colorsJson: string | undefined): string[] {
     return [];
   }
 }
+
+// Build the thumbnail URL for an image filename.
+// Convention: "photo.jpg" -> "/data/thumbnails/photo_thumb.jpg"
+export function thumbnailUrl(filename: string): string {
+  const dot = filename.lastIndexOf('.');
+  const base = dot >= 0 ? filename.substring(0, dot) : filename;
+  return `/data/thumbnails/${base}_thumb.jpg`;
+}

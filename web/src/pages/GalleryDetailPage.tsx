@@ -1,17 +1,19 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { galleries, images as imagesApi } from '@/lib/api';
-import { formatDate, parseColors } from '@/lib/utils';
+import { formatDate, parseColors, thumbnailUrl } from '@/lib/utils';
 import {
   PageHeader,
-  Card,
   Spinner,
   EmptyState,
   Badge,
   Button,
   ConfirmDialog,
 } from '@/components/UI';
+import { JustifiedGrid } from '@/components/JustifiedGrid';
+import type { JustifiedItem } from '@/components/JustifiedGrid';
+import { Lightbox } from '@/components/Lightbox';
 import { Heart, ArrowLeft, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -23,6 +25,7 @@ export function GalleryDetailPage() {
 
   const [confirmDeleteGallery, setConfirmDeleteGallery] = useState(false);
   const [confirmDeleteImageId, setConfirmDeleteImageId] = useState<number | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const { data: gallery, isLoading: loadingGallery } = useQuery({
     queryKey: ['gallery', galleryId],
@@ -56,6 +59,72 @@ export function GalleryDetailPage() {
       setConfirmDeleteImageId(null);
     },
   });
+
+  // Build justified grid items from image list.
+  const gridItems: JustifiedItem[] = useMemo(() => {
+    if (!imageList) return [];
+    return imageList.map((img) => {
+      const colors = parseColors(img.dominant_colors);
+      return {
+        id: img.id,
+        src: `/data/images/${img.filename}`,
+        thumbSrc: thumbnailUrl(img.filename),
+        width: img.width,
+        height: img.height,
+        overlay: (
+          <div className="flex flex-col justify-end h-full bg-gradient-to-t from-black/60 to-transparent p-2">
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    favMut.mutate(img.id);
+                  }}
+                  className="p-1"
+                >
+                  <Heart
+                    size={16}
+                    className={cn(
+                      img.is_favorite ? 'fill-red-500 text-red-500' : 'text-white',
+                    )}
+                  />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmDeleteImageId(img.id);
+                  }}
+                  className="p-1"
+                  title="Delete image"
+                >
+                  <Trash2 size={16} className="text-white hover:text-red-400" />
+                </button>
+              </div>
+              <div className="flex items-center gap-1">
+                {img.is_video && <Badge variant="info">Video</Badge>}
+                {colors.length > 0 && (
+                  <div className="flex h-2 rounded overflow-hidden">
+                    {colors.map((c, i) => (
+                      <div key={i} className="w-2" style={{ backgroundColor: c }} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ),
+      };
+    });
+  }, [imageList, favMut]);
+
+  // Build lightbox images (full-size URLs).
+  const lightboxImages = useMemo(() => {
+    if (!imageList) return [];
+    return imageList.map((img) => ({
+      src: `/data/images/${img.filename}`,
+      alt: img.filename,
+    }));
+  }, [imageList]);
 
   if (loadingGallery) return <Spinner />;
   if (!gallery) return <EmptyState message="Gallery not found." />;
@@ -92,6 +161,7 @@ export function GalleryDetailPage() {
           </p>
         )}
         <p>Created: {formatDate(gallery.created_at)}</p>
+        {imageList && <p>{imageList.length} images</p>}
       </div>
 
       {/* Images grid */}
@@ -100,63 +170,22 @@ export function GalleryDetailPage() {
       ) : !imageList || imageList.length === 0 ? (
         <EmptyState message="No images in this gallery." />
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          {imageList.map((img) => {
-            const colors = parseColors(img.dominant_colors);
-            return (
-              <Card key={img.id} className="p-0 overflow-hidden group relative">
-                <div className="aspect-[4/3] bg-zinc-800 flex items-center justify-center">
-                  <img
-                    src={`/data/images/${img.filename}`}
-                    alt={img.filename}
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                  />
-                </div>
-                {/* Overlay controls */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2">
-                  <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          favMut.mutate(img.id);
-                        }}
-                        className="p-1"
-                      >
-                        <Heart
-                          size={16}
-                          className={cn(
-                            img.is_favorite ? 'fill-red-500 text-red-500' : 'text-white',
-                          )}
-                        />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setConfirmDeleteImageId(img.id);
-                        }}
-                        className="p-1"
-                        title="Delete image"
-                      >
-                        <Trash2 size={16} className="text-white hover:text-red-400" />
-                      </button>
-                    </div>
-                    {img.is_video && <Badge variant="info">Video</Badge>}
-                  </div>
-                </div>
-                {/* Color palette */}
-                {colors.length > 0 && (
-                  <div className="flex h-1">
-                    {colors.map((c, i) => (
-                      <div key={i} className="flex-1" style={{ backgroundColor: c }} />
-                    ))}
-                  </div>
-                )}
-              </Card>
-            );
-          })}
-        </div>
+        <JustifiedGrid
+          items={gridItems}
+          rowHeight={240}
+          gap={4}
+          onItemClick={(index) => setLightboxIndex(index)}
+        />
+      )}
+
+      {/* Lightbox */}
+      {lightboxIndex !== null && (
+        <Lightbox
+          images={lightboxImages}
+          index={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onIndexChange={setLightboxIndex}
+        />
       )}
 
       {/* Confirm dialogs */}

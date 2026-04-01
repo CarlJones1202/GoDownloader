@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/carlj/godownload/internal/config"
 	"github.com/carlj/godownload/internal/database"
@@ -104,6 +105,13 @@ func (h *ImageHandler) delete(c *gin.Context) {
 		slog.Warn("delete: failed to remove file", "path", filePath, "error", err)
 	}
 
+	// Also delete the thumbnail if it exists.
+	thumbName := thumbnailFilename(img.Filename)
+	thumbPath := filepath.Join(h.storage.ThumbnailsDir, thumbName)
+	if err := os.Remove(thumbPath); err != nil && !os.IsNotExist(err) {
+		slog.Warn("delete: failed to remove thumbnail", "path", thumbPath, "error", err)
+	}
+
 	if err := h.db.DeleteImage(ctx, id); err != nil {
 		handleDBError(c, err)
 		return
@@ -194,4 +202,13 @@ func (h *ImageHandler) redownload(c *gin.Context) {
 		"image_id": id,
 		"queue_id": item.ID,
 	})
+}
+
+// thumbnailFilename returns the thumbnail filename for a given image filename.
+// e.g. "photo.jpg" -> "photo_thumb.jpg". Must match the convention used by
+// workers.ThumbnailWorker.
+func thumbnailFilename(filename string) string {
+	ext := filepath.Ext(filename)
+	base := strings.TrimSuffix(filename, ext)
+	return base + "_thumb.jpg"
 }
