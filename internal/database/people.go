@@ -4,6 +4,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/carlj/godownload/internal/models"
@@ -205,4 +206,184 @@ func (db *DB) FindGalleriesByTitleMatch(ctx context.Context, name string) ([]int
 		ids[i] = r.ID
 	}
 	return ids, nil
+}
+
+// MergePeople merges one or more people into a single "keep" person.
+// Gallery links and identifiers from the merged people are reassigned to the keeper.
+// Aliases from the merged people are appended. The merged people are then deleted.
+// All operations run within a single transaction.
+func (db *DB) MergePeople(ctx context.Context, keepID int64, mergeIDs []int64) error {
+	if len(mergeIDs) == 0 {
+		return nil
+	}
+
+	tx, err := db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning merge transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	// Load the keeper.
+	var keeper models.Person
+	if err := tx.GetContext(ctx, &keeper,
+		`SELECT id, name, aliases, birth_date, nationality, created_at
+		   FROM people WHERE id = ?`, keepID,
+	); err != nil {
+		return fmt.Errorf("loading keeper person %d: %w", keepID, err)
+	}
+
+	// Build placeholders for mergeIDs.
+	placeholders := make([]string, len(mergeIDs))
+	mergeArgs := make([]any, len(mergeIDs))
+	for i, mid := range mergeIDs {
+		placeholders[i] = "?"
+		mergeArgs[i] = mid
+	}
+	inClause := strings.Join(placeholders, ",")
+
+	// Collect aliases from merged people.
+	var mergedNames []string
+	rows, err := tx.QueryContext(ctx,
+		fmt.Sprintf(`SELECT name, aliases FROM people WHERE id IN (%s)`, inClause),
+		mergeArgs...,
+	)
+	if err != nil {
+		return fmt.Errorf("loading merged people: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var name string
+		var aliases *string
+		if err := rows.Scan(&name, &aliases); err != nil {
+			return fmt.Errorf("scanning merged person: %w", err)
+		}
+		mergedNames = append(mergedNames, name)
+		if aliases != nil && *aliases != "" {
+			mergedNames = append(mergedNames, strings.Split(*aliases, ", ")...)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterating merged people: %w", err)
+	}
+
+	// Append merged aliases to keeper.
+	if len(mergedNames) > 0 {
+		existing := ""
+		if keeper.Aliases != nil {
+			existing = *keeper.Aliases
+		}
+		parts := []string{}
+		if existing != "" {
+			parts = append(parts, existing)
+		}
+		parts = append(parts, mergedNames...)
+		combined := strings.Join(parts, ", ")
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE people SET aliases = ? WHERE id = ?`, combined, keepID,
+		); err != nil {
+			return fmt.Errorf("updating keeper aliases: %w", err)
+		}
+	}
+
+	// Reassign gallery links. Use INSERT OR IGNORE to handle duplicates.
+	if _, err := tx.ExecContext(ctx,
+		fmt.Sprintf(`INSERT OR IGNORE INTO gallery_persons (gallery_id, person_id)
+		             SELECT gallery_id, ? FROM gallery_persons WHERE person_id IN (%s)`, inClause),
+		append([]any{keepID}, mergeArgs...)...,
+	); err != nil {
+		return fmt.Errorf("reassigning gallery links: %w", err)
+	}
+
+	// Reassign identifiers. Use INSERT OR IGNORE to handle duplicates.
+	if _, err := tx.ExecContext(ctx,
+		fmt.Sprintf(`UPDATE OR IGNORE person_identifiers SET person_id = ? WHERE person_id IN (%s)`, inClause),
+		append([]any{keepID}, mergeArgs...)...,
+	); err != nil {
+		return fmt.Errorf("reassigning identifiers: %w", err)
+	}
+
+	// Delete old gallery links for merged people.
+	if _, err := tx.ExecContext(ctx,
+		fmt.Sprintf(`DELETE FROM gallery_persons WHERE person_id IN (%s)`, inClause),
+		mergeArgs...,
+	); err != nil {
+		return fmt.Errorf("cleaning gallery links: %w", err)
+	}
+
+	// Delete old identifiers for merged people.
+	if _, err := tx.ExecContext(ctx,
+		fmt.Sprintf(`DELETE FROM person_identifiers WHERE person_id IN (%s)`, inClause),
+		mergeArgs...,
+	); err != nil {
+		return fmt.Errorf("cleaning identifiers: %w", err)
+	}
+
+	// Delete merged people.
+	if _, err := tx.ExecContext(ctx,
+		fmt.Sprintf(`DELETE FROM people WHERE id IN (%s)`, inClause),
+		mergeArgs...,
+	); err != nil {
+		return fmt.Errorf("deleting merged people: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing merge transaction: %w", err)
+	}
+
+	return nil
+}
+
+// BulkDeletePeople deletes multiple people by IDs and returns the number deleted.
+func (db *DB) BulkDeletePeople(ctx context.Context, ids []int64) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	tx, err := db.BeginTxx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("beginning bulk delete transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	inClause := strings.Join(placeholders, ",")
+
+	// Clean up related records.
+	if _, err := tx.ExecContext(ctx,
+		fmt.Sprintf(`DELETE FROM gallery_persons WHERE person_id IN (%s)`, inClause),
+		args...,
+	); err != nil {
+		return 0, fmt.Errorf("deleting gallery links: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx,
+		fmt.Sprintf(`DELETE FROM person_identifiers WHERE person_id IN (%s)`, inClause),
+		args...,
+	); err != nil {
+		return 0, fmt.Errorf("deleting identifiers: %w", err)
+	}
+
+	result, err := tx.ExecContext(ctx,
+		fmt.Sprintf(`DELETE FROM people WHERE id IN (%s)`, inClause),
+		args...,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("deleting people: %w", err)
+	}
+
+	n, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("getting rows affected: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("committing bulk delete: %w", err)
+	}
+
+	return n, nil
 }

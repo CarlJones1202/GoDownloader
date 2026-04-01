@@ -2,6 +2,8 @@
 package handlers
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -28,6 +30,9 @@ func NewPeopleHandler(db *database.DB, al *linker.AutoLinker, enricher *provider
 func (h *PeopleHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("", h.list)
 	rg.POST("", h.create)
+	rg.POST("/bulk/enrich", h.bulkEnrich)
+	rg.POST("/bulk/merge", h.bulkMerge)
+	rg.DELETE("/bulk", h.bulkDelete)
 	rg.GET("/:id", h.get)
 	rg.PUT("/:id", h.update)
 	rg.DELETE("/:id", h.delete)
@@ -335,4 +340,146 @@ func (h *PeopleHandler) applyPersonInfo(c *gin.Context, p *models.Person, info *
 	}
 
 	respondOK(c, p)
+}
+
+// bulkEnrichRequest holds the request body for bulk enrichment.
+type bulkEnrichRequest struct {
+	PersonIDs []int64 `json:"person_ids" binding:"required"`
+	Provider  string  `json:"provider"` // optional: limit to single provider
+	Apply     bool    `json:"apply"`    // if true, merge metadata into person records
+}
+
+// bulkEnrich triggers enrichment for multiple people at once.
+func (h *PeopleHandler) bulkEnrich(c *gin.Context) {
+	var req bulkEnrichRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	ctx := c.Request.Context()
+	enriched := 0
+	failed := 0
+
+	for _, pid := range req.PersonIDs {
+		p, err := h.db.GetPerson(ctx, pid)
+		if err != nil {
+			slog.Warn("bulk enrich: skip person", "person_id", pid, "error", err)
+			failed++
+			continue
+		}
+
+		if req.Provider != "" {
+			info, lookupErr := h.enricher.LookupProvider(ctx, req.Provider, p.Name)
+			if lookupErr != nil {
+				slog.Warn("bulk enrich: lookup failed", "person_id", pid, "provider", req.Provider, "error", lookupErr)
+				failed++
+				continue
+			}
+			if req.Apply {
+				h.applyPersonInfoQuiet(ctx, p, info, req.Provider)
+			}
+		} else {
+			result := h.enricher.LookupPerson(ctx, p.Name)
+			if req.Apply {
+				h.applyPersonInfoQuiet(ctx, p, &result.Merged, "merged")
+			}
+		}
+		enriched++
+	}
+
+	respondOK(c, gin.H{
+		"message":   "bulk enrichment complete",
+		"enriched":  enriched,
+		"failed":    failed,
+		"requested": len(req.PersonIDs),
+	})
+}
+
+// applyPersonInfoQuiet merges provider metadata into the person record without
+// writing an HTTP response. Used for bulk operations.
+func (h *PeopleHandler) applyPersonInfoQuiet(ctx context.Context, p *models.Person, info *providers.PersonInfo, providerName string) {
+	if info.Aliases != nil && p.Aliases == nil {
+		joined := strings.Join(info.Aliases, ", ")
+		p.Aliases = &joined
+	}
+	if info.BirthDate != nil && p.BirthDate == nil {
+		p.BirthDate = info.BirthDate
+	}
+	if info.Nationality != nil && p.Nationality == nil {
+		p.Nationality = info.Nationality
+	}
+
+	if err := h.db.UpdatePerson(ctx, p); err != nil {
+		slog.Error("bulk enrich: update person", "person_id", p.ID, "error", err)
+		return
+	}
+
+	if info.ExternalID != nil && providerName != "merged" {
+		pid := &models.PersonIdentifier{
+			PersonID:   p.ID,
+			Provider:   providerName,
+			ExternalID: *info.ExternalID,
+		}
+		_ = h.db.UpsertPersonIdentifier(ctx, pid)
+	}
+}
+
+// bulkMergeRequest holds the request body for merging people.
+type bulkMergeRequest struct {
+	KeepID   int64   `json:"keep_id"   binding:"required"`
+	MergeIDs []int64 `json:"merge_ids" binding:"required"`
+}
+
+// bulkMerge merges multiple people into a single keeper.
+func (h *PeopleHandler) bulkMerge(c *gin.Context) {
+	var req bulkMergeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := h.db.MergePeople(c.Request.Context(), req.KeepID, req.MergeIDs); err != nil {
+		handleDBError(c, err)
+		return
+	}
+
+	// Return the updated keeper.
+	keeper, err := h.db.GetPerson(c.Request.Context(), req.KeepID)
+	if err != nil {
+		handleDBError(c, err)
+		return
+	}
+
+	respondOK(c, gin.H{
+		"message": "merge complete",
+		"person":  keeper,
+		"merged":  len(req.MergeIDs),
+	})
+}
+
+// bulkDeleteRequest holds the request body for bulk deletion.
+type bulkDeleteRequest struct {
+	PersonIDs []int64 `json:"person_ids" binding:"required"`
+}
+
+// bulkDelete deletes multiple people at once.
+func (h *PeopleHandler) bulkDelete(c *gin.Context) {
+	var req bulkDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	deleted, err := h.db.BulkDeletePeople(c.Request.Context(), req.PersonIDs)
+	if err != nil {
+		handleDBError(c, err)
+		return
+	}
+
+	respondOK(c, gin.H{
+		"message":   "bulk delete complete",
+		"requested": len(req.PersonIDs),
+		"deleted":   deleted,
+	})
 }

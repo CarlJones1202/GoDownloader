@@ -71,7 +71,7 @@ func main() {
 
 	autoLinker := linker.New(db)
 
-	router := buildRouter(db, crawlerSvc, autoLinker, enricher)
+	router := buildRouter(db, crawlerSvc, queueMgr, autoLinker, enricher)
 
 	srv := &http.Server{
 		Addr:         cfg.Addr(),
@@ -109,7 +109,7 @@ func main() {
 }
 
 // buildRouter wires up all routes and returns the configured gin.Engine.
-func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, al *linker.AutoLinker, enricher *providers.Enricher) *gin.Engine {
+func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.Manager, al *linker.AutoLinker, enricher *providers.Enricher) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.New()
@@ -124,7 +124,7 @@ func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, al *linker.AutoLi
 	handlers.NewImageHandler(db).RegisterRoutes(v1.Group("/images"))
 	handlers.NewVideoHandler(db).RegisterRoutes(v1.Group("/videos"))
 	handlers.NewPeopleHandler(db, al, enricher).RegisterRoutes(v1.Group("/people"))
-	handlers.NewAdminHandler(db).RegisterRoutes(v1.Group("/admin"))
+	handlers.NewAdminHandler(db, crawlerSvc, queueMgr).RegisterRoutes(v1.Group("/admin"))
 
 	// Health check endpoint.
 	r.GET("/health", func(c *gin.Context) {

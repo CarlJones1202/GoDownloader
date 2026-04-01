@@ -164,6 +164,53 @@ func (db *DB) GetQueueStats(ctx context.Context) (*QueueStats, error) {
 	return stats, nil
 }
 
+// DownloadStats holds temporal download statistics.
+type DownloadStats struct {
+	CompletedToday int64 `db:"completed_today" json:"completed_today"`
+	CompletedWeek  int64 `db:"completed_week"  json:"completed_week"`
+	FailedToday    int64 `db:"failed_today"    json:"failed_today"`
+	FailedWeek     int64 `db:"failed_week"     json:"failed_week"`
+}
+
+// GetDownloadStats returns temporal download statistics (completed/failed today and this week).
+func (db *DB) GetDownloadStats(ctx context.Context) (*DownloadStats, error) {
+	var stats DownloadStats
+	err := db.GetContext(ctx, &stats, `
+		SELECT
+		  COALESCE(SUM(CASE WHEN status = 'completed' AND created_at >= date('now') THEN 1 ELSE 0 END), 0)   AS completed_today,
+		  COALESCE(SUM(CASE WHEN status = 'completed' AND created_at >= date('now', '-7 days') THEN 1 ELSE 0 END), 0) AS completed_week,
+		  COALESCE(SUM(CASE WHEN status = 'failed'    AND created_at >= date('now') THEN 1 ELSE 0 END), 0)   AS failed_today,
+		  COALESCE(SUM(CASE WHEN status = 'failed'    AND created_at >= date('now', '-7 days') THEN 1 ELSE 0 END), 0) AS failed_week
+		FROM download_queue`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("getting download stats: %w", err)
+	}
+	return &stats, nil
+}
+
+// ClearQueue deletes queue items, optionally filtered by status.
+// Returns the number of deleted rows.
+func (db *DB) ClearQueue(ctx context.Context, status *string) (int64, error) {
+	query := `DELETE FROM download_queue`
+	args := []any{}
+
+	if status != nil {
+		query += " WHERE status = ?"
+		args = append(args, *status)
+	}
+
+	result, err := db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("clearing queue: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("getting rows affected: %w", err)
+	}
+	return n, nil
+}
+
 // NextPendingItems fetches up to n pending queue items and marks them as active.
 func (db *DB) NextPendingItems(ctx context.Context, n int) ([]models.DownloadQueue, error) {
 	tx, err := db.BeginTxx(ctx, nil)
