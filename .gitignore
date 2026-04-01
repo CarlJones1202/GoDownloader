@@ -1,0 +1,52 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go build/test artifacts
+*.test
+*.out
+coverage.html
+coverage.out
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Data directories (downloaded content)
+data/
+
+# Config overrides (keep the checked-in sample)
+configs/config.local.yaml
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# OS generated
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Go workspace (Go 1.18+)
+go.work
+go.work.sum
+
+# Temporary files
+tmp/
+*.tmp
+*.log
