@@ -93,6 +93,11 @@ type DownloadQueue struct {
 	RetryCount   int       `db:"retry_count"   json:"retry_count"`
 	ErrorMessage *string   `db:"error_message" json:"error_message,omitempty"`
 	CreatedAt    time.Time `db:"created_at"    json:"created_at"`
+
+	// Joined fields (populated by ListQueue with JOINs, not stored directly).
+	GalleryTitle *string `db:"gallery_title" json:"gallery_title,omitempty"`
+	SourceID     *int64  `db:"source_id"     json:"source_id,omitempty"`
+	SourceName   *string `db:"source_name"   json:"source_name,omitempty"`
 }
 
 // QueueStatus enumerates valid values for DownloadQueue.Status.

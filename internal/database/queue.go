@@ -23,20 +23,27 @@ func (db *DB) ListQueue(ctx context.Context, f QueueFilter) ([]models.DownloadQu
 		f.Limit = 50
 	}
 
-	query := `SELECT id, type, url, target_id, status, retry_count, error_message, created_at
-	            FROM download_queue WHERE 1=1`
+	query := `SELECT dq.id, dq.type, dq.url, dq.target_id, dq.status,
+	                 dq.retry_count, dq.error_message, dq.created_at,
+	                 g.title AS gallery_title,
+	                 s.id AS source_id,
+	                 s.name AS source_name
+	            FROM download_queue dq
+	       LEFT JOIN galleries g ON dq.target_id = g.id AND dq.type IN ('image', 'video')
+	       LEFT JOIN sources   s ON g.source_id = s.id
+	           WHERE 1=1`
 	args := []any{}
 
 	if f.Status != nil {
-		query += " AND status = ?"
+		query += " AND dq.status = ?"
 		args = append(args, *f.Status)
 	}
 	if f.Type != nil {
-		query += " AND type = ?"
+		query += " AND dq.type = ?"
 		args = append(args, *f.Type)
 	}
 
-	query += " ORDER BY created_at ASC LIMIT ? OFFSET ?"
+	query += " ORDER BY dq.created_at ASC LIMIT ? OFFSET ?"
 	args = append(args, f.Limit, f.Offset)
 
 	items := []models.DownloadQueue{}

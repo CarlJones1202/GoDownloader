@@ -18,6 +18,10 @@ export default defineConfig({
         target: 'http://localhost:8090',
         changeOrigin: true,
       },
+      '/data': {
+        target: 'http://localhost:8090',
+        changeOrigin: true,
+      },
     },
   },
   build: {

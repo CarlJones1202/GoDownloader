@@ -251,7 +251,9 @@ export function AdminPage() {
                   )}
                   <p className="text-xs text-zinc-600 mt-0.5">
                     {formatDateTime(item.created_at)}
-                    {item.target_id && ` · target: ${item.target_id}`}
+                    {item.source_name && ` · source: ${item.source_name}`}
+                    {item.gallery_title && ` · gallery: ${item.gallery_title}`}
+                    {!item.source_name && item.target_id && ` · target: ${item.target_id}`}
                   </p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">

@@ -64,6 +64,9 @@ export interface DownloadQueue {
   retry_count: number;
   error_message?: string;
   created_at: string;
+  gallery_title?: string;
+  source_id?: number;
+  source_name?: string;
 }
 
 export interface QueueStats {
