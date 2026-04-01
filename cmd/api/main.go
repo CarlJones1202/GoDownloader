@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -130,6 +132,38 @@ func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.M
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	// Serve the React SPA from web/dist/ when available.
+	// Any request that does not match an API route or a static file is
+	// served index.html so the client-side router can handle it.
+	distDir := "web/dist"
+	if info, err := os.Stat(distDir); err == nil && info.IsDir() {
+		slog.Info("serving frontend", "dir", distDir)
+		staticFS := http.Dir(distDir)
+
+		r.NoRoute(func(c *gin.Context) {
+			path := c.Request.URL.Path
+
+			// Skip API paths — they should 404 normally.
+			if strings.HasPrefix(path, "/api/") {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+				return
+			}
+
+			// Try to serve the requested file directly (JS, CSS, images, etc.).
+			clean := filepath.Clean(path)
+			if f, err := staticFS.Open(clean); err == nil {
+				defer f.Close()
+				if stat, err := f.Stat(); err == nil && !stat.IsDir() {
+					http.ServeFile(c.Writer, c.Request, filepath.Join(distDir, clean))
+					return
+				}
+			}
+
+			// SPA fallback — serve index.html for all other paths.
+			c.File(filepath.Join(distDir, "index.html"))
+		})
+	}
 
 	return r
 }
