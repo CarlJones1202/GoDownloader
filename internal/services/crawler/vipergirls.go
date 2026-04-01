@@ -19,7 +19,11 @@ var vgPostRe = regexp.MustCompile(`(?s)<div[^>]+id="post_message_\d+"[^>]*>(.*?)
 // vgTitleRe tries to extract a gallery title from bold text or the post header.
 var vgTitleRe = regexp.MustCompile(`(?i)<b>([^<]{3,80})</b>`)
 
-// vgLinkRe captures image host links from <a> tags.
+// vgImgLinkRe captures <a href="..."><img src="..."></a> pairs from image host links.
+// It captures both the href (group 1) and the img src (group 2).
+var vgImgLinkRe = regexp.MustCompile(`(?i)<a[^>]+href="(https?://(?:www\.)?(?:imagebam\.com|imgbox\.com|imx\.to|turboimagehost\.com|vipr\.im|pixhost\.to|postimages\.org|postimg\.cc|imagetwist\.com|acidimg\.cc|mymypic\.net)[^"]*)"[^>]*>\s*<img[^>]+src="([^"]*)"`)
+
+// vgLinkRe captures image host links from <a> tags (fallback, no img src).
 var vgLinkRe = regexp.MustCompile(`(?i)<a[^>]+href="(https?://(?:www\.)?(?:imagebam\.com|imgbox\.com|imx\.to|turboimagehost\.com|vipr\.im|pixhost\.to|postimages\.org|postimg\.cc|imagetwist\.com|acidimg\.cc|mymypic\.net)[^"]*)"`)
 
 // NewViperGirls creates a ViperGirls parser.
@@ -31,14 +35,16 @@ func (v *ViperGirls) Hosts() []string {
 }
 
 // Parse implements SourceParser.
-func (v *ViperGirls) Parse(_ context.Context, body, _ string) (map[string][]string, error) {
-	return parseForumPosts(body, vgPostRe, vgTitleRe, vgLinkRe)
+func (v *ViperGirls) Parse(_ context.Context, body, _ string) (map[string][]ImageLink, error) {
+	return parseForumPosts(body, vgPostRe, vgTitleRe, vgImgLinkRe, vgLinkRe)
 }
 
 // parseForumPosts is a shared parser for vBulletin-style forums.
 // It extracts posts, optional titles, and image host links.
-func parseForumPosts(body string, postRe, titleRe, linkRe *regexp.Regexp) (map[string][]string, error) {
-	galleries := make(map[string][]string)
+// imgLinkRe is the primary regex that captures both href and img src.
+// linkRe is the fallback that captures only href.
+func parseForumPosts(body string, postRe, titleRe, imgLinkRe, linkRe *regexp.Regexp) (map[string][]ImageLink, error) {
+	galleries := make(map[string][]ImageLink)
 
 	posts := postRe.FindAllStringSubmatch(body, -1)
 	for i, pm := range posts {
@@ -56,12 +62,28 @@ func parseForumPosts(body string, postRe, titleRe, linkRe *regexp.Regexp) (map[s
 			title = "Untitled " + itoa(i+1)
 		}
 
-		links := linkRe.FindAllStringSubmatch(postHTML, -1)
-		if len(links) == 0 {
-			continue
+		// First pass: try to extract <a href><img src> pairs.
+		seen := make(map[string]bool)
+		imgLinks := imgLinkRe.FindAllStringSubmatch(postHTML, -1)
+		for _, m := range imgLinks {
+			if len(m) < 3 {
+				continue
+			}
+			href := strings.TrimSpace(m[1])
+			if seen[href] {
+				continue
+			}
+			seen[href] = true
+
+			thumbURL := strings.TrimSpace(m[2])
+			galleries[title] = append(galleries[title], ImageLink{
+				PageURL:  href,
+				ThumbURL: thumbURL,
+			})
 		}
 
-		seen := make(map[string]bool)
+		// Second pass: find any <a> links not already captured (no img child).
+		links := linkRe.FindAllStringSubmatch(postHTML, -1)
 		for _, lm := range links {
 			if len(lm) < 2 {
 				continue
@@ -71,7 +93,9 @@ func parseForumPosts(body string, postRe, titleRe, linkRe *regexp.Regexp) (map[s
 				continue
 			}
 			seen[href] = true
-			galleries[title] = append(galleries[title], href)
+			galleries[title] = append(galleries[title], ImageLink{
+				PageURL: href,
+			})
 		}
 	}
 

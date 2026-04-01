@@ -9,15 +9,24 @@ import (
 
 // TurboImageHost rips direct image URLs from turboimagehost.com image pages.
 //
-// Example page: https://www.turboimagehost.com/p/abc123/filename.jpg.html
-// The direct URL is in an <img> tag with id="imageid".
+// The direct URL is in an <img> with id="imageid", or fallback
+// selectors #img and #uImageCont img.
 type TurboImageHost struct {
 	client    *http.Client
 	userAgent string
 }
 
-// turboImgRe matches: <img ... id="imageid" ... src="https://...">
-var turboImgRe = regexp.MustCompile(`(?i)<img[^>]+id="imageid"[^>]+src="(?P<url>https?://[^"]+)"`)
+// turboImgIDRe matches: <img ... id="imageid" ... src="...">
+var turboImgIDRe = regexp.MustCompile(`(?i)<img[^>]+id="imageid"[^>]+src="([^"]+)"`)
+
+// turboImgIDSrcFirst matches: <img src="..." ... id="imageid">
+var turboImgIDSrcFirst = regexp.MustCompile(`(?i)<img[^>]+src="([^"]+)"[^>]+id="imageid"`)
+
+// turboImgRe matches: <img id="img" ... src="...">
+var turboImgTagRe = regexp.MustCompile(`(?i)<img[^>]+id="img"[^>]+src="([^"]+)"`)
+
+// turboUImageRe matches images inside #uImageCont.
+var turboUImageRe = regexp.MustCompile(`(?i)id="uImageCont"[^>]*>[\s\S]*?<img[^>]+src="([^"]+)"`)
 
 // NewTurboImageHost creates a TurboImageHost ripper.
 func NewTurboImageHost(client *http.Client, userAgent string) *TurboImageHost {
@@ -39,10 +48,21 @@ func (r *TurboImageHost) Rip(ctx context.Context, pageURL string) ([]string, err
 		return nil, err
 	}
 
-	u, err := firstMatch(turboImgRe, body, pageURL)
-	if err != nil {
-		return nil, fmt.Errorf("turboimagehost: %w", err)
+	// Try primary selector: img#imageid
+	if m := turboImgIDRe.FindStringSubmatch(body); m != nil {
+		return []string{m[1]}, nil
+	}
+	if m := turboImgIDSrcFirst.FindStringSubmatch(body); m != nil {
+		return []string{m[1]}, nil
+	}
+	// Fallback: img#img
+	if m := turboImgTagRe.FindStringSubmatch(body); m != nil {
+		return []string{m[1]}, nil
+	}
+	// Fallback: #uImageCont img
+	if m := turboUImageRe.FindStringSubmatch(body); m != nil {
+		return []string{m[1]}, nil
 	}
 
-	return []string{u}, nil
+	return nil, fmt.Errorf("turboimagehost: no image found on %s", pageURL)
 }

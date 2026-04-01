@@ -9,7 +9,6 @@ import (
 
 // ImgBox rips direct image URLs from imgbox.com image pages.
 //
-// Example page: https://imgbox.com/abc123
 // The direct URL is in an <img> tag with id="img".
 type ImgBox struct {
 	client    *http.Client
@@ -17,7 +16,9 @@ type ImgBox struct {
 }
 
 // imgBoxRe matches: <img id="img" ... src="https://...">
-var imgBoxRe = regexp.MustCompile(`(?i)<img[^>]+id="img"[^>]+src="(?P<url>https?://[^"]+)"`)
+// Also handles src before id.
+var imgBoxRe = regexp.MustCompile(`(?i)<img[^>]+id="img"[^>]+src="([^"]+)"`)
+var imgBoxReSrcFirst = regexp.MustCompile(`(?i)<img[^>]+src="([^"]+)"[^>]+id="img"`)
 
 // NewImgBox creates an ImgBox ripper.
 func NewImgBox(client *http.Client, userAgent string) *ImgBox {
@@ -39,10 +40,12 @@ func (r *ImgBox) Rip(ctx context.Context, pageURL string) ([]string, error) {
 		return nil, err
 	}
 
-	u, err := firstMatch(imgBoxRe, body, pageURL)
-	if err != nil {
-		return nil, fmt.Errorf("imgbox: %w", err)
+	if m := imgBoxRe.FindStringSubmatch(body); m != nil {
+		return []string{m[1]}, nil
+	}
+	if m := imgBoxReSrcFirst.FindStringSubmatch(body); m != nil {
+		return []string{m[1]}, nil
 	}
 
-	return []string{u}, nil
+	return nil, fmt.Errorf("imgbox: no #img found on %s", pageURL)
 }

@@ -2,54 +2,41 @@ package providers
 
 import (
 	"context"
-	"fmt"
 	"net/http"
-	"regexp"
+	"strings"
 )
 
-// MyMyPic rips direct image URLs from mymypic.net image pages.
-//
-// Example page: https://mymypic.net/img-abc123.html
-// The direct URL is in an og:image meta tag.
-type MyMyPic struct {
-	client    *http.Client
-	userAgent string
-}
-
-// myMyPicRe matches: <meta property="og:image" content="https://...">
-var myMyPicRe = regexp.MustCompile(`(?i)<meta[^>]+property="og:image"[^>]+content="(?P<url>https?://[^"]+)"`)
-
-// myMyPicImgRe is a fallback matching an <img> with id="imgprev" or class="pic".
-var myMyPicImgRe = regexp.MustCompile(`(?i)<img[^>]+(?:id="imgprev"|class="pic")[^>]+src="(?P<url>https?://[^"]+)"`)
+// MyMyPic is a passthrough ripper for mymypic.net / mymyatt.net.
+// Links from JKForum are typically direct image URLs that may need
+// a simple protocol prefix fix.
+type MyMyPic struct{}
 
 // NewMyMyPic creates a MyMyPic ripper.
-func NewMyMyPic(client *http.Client, userAgent string) *MyMyPic {
-	if client == nil {
-		client = newDefaultClient()
-	}
-	return &MyMyPic{client: client, userAgent: userAgent}
+func NewMyMyPic(_ *http.Client, _ string) *MyMyPic {
+	return &MyMyPic{}
 }
 
 // Hosts implements ripper.Ripper.
 func (r *MyMyPic) Hosts() []string {
-	return []string{"mymypic.net", "www.mymypic.net"}
+	return []string{"mymypic.net", "www.mymypic.net", "mymyatt.net", "www.mymyatt.net"}
 }
 
 // Rip implements ripper.Ripper.
-func (r *MyMyPic) Rip(ctx context.Context, pageURL string) ([]string, error) {
-	body, err := fetchPage(ctx, r.client, pageURL, r.userAgent)
-	if err != nil {
-		return nil, err
+func (r *MyMyPic) Rip(_ context.Context, pageURL string) ([]string, error) {
+	u := pageURL
+	if strings.HasPrefix(u, "//") {
+		u = "https:" + u
 	}
+	return []string{u}, nil
+}
 
-	if u, err := firstMatch(myMyPicRe, body, pageURL); err == nil {
-		return []string{u}, nil
+// RipThumbnail implements ripper.ThumbnailRipper.
+// For MyMyPic, the thumbnail URL from the forum post may itself be the
+// full-size image, so we try both.
+func (r *MyMyPic) RipThumbnail(_ context.Context, thumbnailURL string) ([]string, error) {
+	u := thumbnailURL
+	if strings.HasPrefix(u, "//") {
+		u = "https:" + u
 	}
-
-	u, err := firstMatch(myMyPicImgRe, body, pageURL)
-	if err != nil {
-		return nil, fmt.Errorf("mymypic: %w", err)
-	}
-
 	return []string{u}, nil
 }

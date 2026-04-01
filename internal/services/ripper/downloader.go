@@ -49,6 +49,17 @@ type Ripper interface {
 	Rip(ctx context.Context, pageURL string) ([]string, error)
 }
 
+// ThumbnailRipper is an optional interface for rippers that derive the
+// full-size image URL from the thumbnail/img-src URL rather than scraping
+// the image page. Rippers like AcidImg, PixHost, and Vipr.im use simple
+// URL string transformations on the thumbnail.
+type ThumbnailRipper interface {
+	Ripper
+	// RipThumbnail resolves the direct download URL from a thumbnail URL.
+	// If thumbnailURL is empty, callers should fall back to Rip(pageURL).
+	RipThumbnail(ctx context.Context, thumbnailURL string) ([]string, error)
+}
+
 // Registry maps host strings to Rippers and dispatches downloads.
 type Registry struct {
 	mu        sync.RWMutex
@@ -119,15 +130,38 @@ func (r *Registry) ripperFor(rawURL string) (Ripper, error) {
 
 // Download resolves a page URL via its ripper and downloads all resulting
 // media files to the destination directory. It returns one Result per file.
+// If thumbnailURL is non-empty and the ripper implements ThumbnailRipper,
+// the thumbnail URL is used instead of scraping the page.
 func (r *Registry) Download(ctx context.Context, pageURL string) ([]Result, error) {
+	return r.DownloadWithThumbnail(ctx, pageURL, "")
+}
+
+// DownloadWithThumbnail resolves a page URL (and optional thumbnail URL)
+// via the appropriate ripper and downloads all resulting media files.
+func (r *Registry) DownloadWithThumbnail(ctx context.Context, pageURL, thumbnailURL string) ([]Result, error) {
 	rip, err := r.ripperFor(pageURL)
 	if err != nil {
 		return nil, err
 	}
 
-	directURLs, err := rip.Rip(ctx, pageURL)
-	if err != nil {
-		return nil, fmt.Errorf("ripper: ripping %q: %w", pageURL, err)
+	var directURLs []string
+
+	// If we have a thumbnail URL and the ripper supports it, prefer that path.
+	if thumbnailURL != "" {
+		if tr, ok := rip.(ThumbnailRipper); ok {
+			directURLs, err = tr.RipThumbnail(ctx, thumbnailURL)
+			if err != nil {
+				return nil, fmt.Errorf("ripper: ripping thumbnail %q: %w", thumbnailURL, err)
+			}
+		}
+	}
+
+	// Fall back to the standard page-scraping Rip.
+	if len(directURLs) == 0 {
+		directURLs, err = rip.Rip(ctx, pageURL)
+		if err != nil {
+			return nil, fmt.Errorf("ripper: ripping %q: %w", pageURL, err)
+		}
 	}
 
 	results := make([]Result, 0, len(directURLs))

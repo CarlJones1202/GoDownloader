@@ -15,11 +15,17 @@ type JKForum struct{}
 // jkPostRe captures individual posts.
 var jkPostRe = regexp.MustCompile(`(?s)<div[^>]+id="post_message_\d+"[^>]*>(.*?)</div>`)
 
+// jkArticleRe captures Nuxt-style article containers (fallback).
+var jkArticleRe = regexp.MustCompile(`(?s)<(?:article|div[^>]+class="[^"]*(?:article-content|post-content)[^"]*")[^>]*>(.*?)</(?:article|div)>`)
+
 // jkTitleRe tries to extract a gallery title from the post.
 var jkTitleRe = regexp.MustCompile(`(?i)<(?:b|strong)>([^<]{3,80})</(?:b|strong)>`)
 
-// jkLinkRe captures image host links (same set as ViperGirls).
-var jkLinkRe = regexp.MustCompile(`(?i)<a[^>]+href="(https?://(?:www\.)?(?:imagebam\.com|imgbox\.com|imx\.to|turboimagehost\.com|vipr\.im|pixhost\.to|postimages\.org|postimg\.cc|imagetwist\.com|acidimg\.cc|mymypic\.net)[^"]*)"`)
+// jkImgLinkRe captures <a href><img src> pairs.
+var jkImgLinkRe = regexp.MustCompile(`(?i)<a[^>]+href="(https?://(?:www\.)?(?:imagebam\.com|imgbox\.com|imx\.to|turboimagehost\.com|vipr\.im|pixhost\.to|postimages\.org|postimg\.cc|imagetwist\.com|acidimg\.cc|mymypic\.net|mymyatt\.net)[^"]*)"[^>]*>\s*<img[^>]+src="([^"]*)"`)
+
+// jkLinkRe captures image host links (fallback, same set as ViperGirls plus mymyatt).
+var jkLinkRe = regexp.MustCompile(`(?i)<a[^>]+href="(https?://(?:www\.)?(?:imagebam\.com|imgbox\.com|imx\.to|turboimagehost\.com|vipr\.im|pixhost\.to|postimages\.org|postimg\.cc|imagetwist\.com|acidimg\.cc|mymypic\.net|mymyatt\.net)[^"]*)"`)
 
 // NewJKForum creates a JKForum parser.
 func NewJKForum() *JKForum { return &JKForum{} }
@@ -30,6 +36,16 @@ func (j *JKForum) Hosts() []string {
 }
 
 // Parse implements SourceParser.
-func (j *JKForum) Parse(_ context.Context, body, _ string) (map[string][]string, error) {
-	return parseForumPosts(body, jkPostRe, jkTitleRe, jkLinkRe)
+func (j *JKForum) Parse(_ context.Context, body, _ string) (map[string][]ImageLink, error) {
+	// Try vBulletin-style first.
+	galleries, err := parseForumPosts(body, jkPostRe, jkTitleRe, jkImgLinkRe, jkLinkRe)
+	if err != nil {
+		return nil, err
+	}
+	if len(galleries) > 0 {
+		return galleries, nil
+	}
+
+	// Fall back to Nuxt-style article containers.
+	return parseForumPosts(body, jkArticleRe, jkTitleRe, jkImgLinkRe, jkLinkRe)
 }

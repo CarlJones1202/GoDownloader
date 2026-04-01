@@ -2,47 +2,41 @@ package providers
 
 import (
 	"context"
-	"fmt"
 	"net/http"
-	"regexp"
+	"strings"
 )
 
-// PixHost rips direct image URLs from pixhost.to image pages.
+// PixHost derives full-size image URLs from pixhost.to thumbnail URLs
+// via a simple URL string transformation. It does NOT fetch any page.
 //
-// Example page: https://pixhost.to/show/123/abc.jpg
-// The direct image URL is in an <img> tag with id="image".
-type PixHost struct {
-	client    *http.Client
-	userAgent string
-}
+// Reference: replace "/thumbs" -> "/images" and "https://t" -> "https://img".
+type PixHost struct{}
 
-// pixHostRe matches: <img ... id="image" ... src="https://...">
-var pixHostRe = regexp.MustCompile(`(?i)<img[^>]+id="image"[^>]+src="(?P<url>https?://[^"]+)"`)
-
-// NewPixHost creates a PixHost ripper.
-func NewPixHost(client *http.Client, userAgent string) *PixHost {
-	if client == nil {
-		client = newDefaultClient()
-	}
-	return &PixHost{client: client, userAgent: userAgent}
+// NewPixHost creates a PixHost ripper. The client and userAgent
+// parameters are accepted for interface compatibility but unused.
+func NewPixHost(_ *http.Client, _ string) *PixHost {
+	return &PixHost{}
 }
 
 // Hosts implements ripper.Ripper.
 func (r *PixHost) Hosts() []string {
-	return []string{"pixhost.to", "www.pixhost.to"}
+	return []string{"pixhost.to", "www.pixhost.to", "t3.pixhost.to", "t4.pixhost.to", "t5.pixhost.to", "t6.pixhost.to", "t7.pixhost.to", "t8.pixhost.to", "t9.pixhost.to", "t10.pixhost.to"}
 }
 
-// Rip implements ripper.Ripper.
-func (r *PixHost) Rip(ctx context.Context, pageURL string) ([]string, error) {
-	body, err := fetchPage(ctx, r.client, pageURL, r.userAgent)
-	if err != nil {
-		return nil, err
-	}
+// Rip implements ripper.Ripper. For PixHost, if we only have the page URL
+// we attempt the same transform.
+func (r *PixHost) Rip(_ context.Context, pageURL string) ([]string, error) {
+	return []string{transformPixHost(pageURL)}, nil
+}
 
-	u, err := firstMatch(pixHostRe, body, pageURL)
-	if err != nil {
-		return nil, fmt.Errorf("pixhost: %w", err)
-	}
+// RipThumbnail implements ripper.ThumbnailRipper.
+func (r *PixHost) RipThumbnail(_ context.Context, thumbnailURL string) ([]string, error) {
+	return []string{transformPixHost(thumbnailURL)}, nil
+}
 
-	return []string{u}, nil
+// transformPixHost converts a thumbnail URL to a full-size image URL.
+func transformPixHost(u string) string {
+	u = strings.ReplaceAll(u, "/thumbs", "/images")
+	u = strings.ReplaceAll(u, "https://t", "https://img")
+	return u
 }

@@ -47,22 +47,28 @@ func (p *Processors) Register(mgr *queue.Manager) {
 // processImage downloads a single image page URL, saves the file, and
 // creates or updates an Image record in the database.
 func (p *Processors) processImage(ctx context.Context, item *models.DownloadQueue) error {
-	slog.Info("processor: downloading image", "url", item.URL, "queue_id", item.ID)
+	// The URL may contain a pipe-separated thumbnail URL appended by the
+	// crawler: "pageURL|thumbnailURL". Split them so the ripper can use
+	// the thumbnail for URL-transform providers (AcidImg, PixHost, etc.).
+	pageURL, thumbnailURL := splitQueueURL(item.URL)
 
-	results, err := p.reg.Download(ctx, item.URL)
+	slog.Info("processor: downloading image", "url", pageURL, "queue_id", item.ID)
+
+	results, err := p.reg.DownloadWithThumbnail(ctx, pageURL, thumbnailURL)
 	if err != nil {
-		return fmt.Errorf("processor: image download %q: %w", item.URL, err)
+		return fmt.Errorf("processor: image download %q: %w", pageURL, err)
 	}
 
 	if len(results) == 0 {
-		return fmt.Errorf("processor: no files downloaded from %q", item.URL)
+		return fmt.Errorf("processor: no files downloaded from %q", pageURL)
 	}
 
+	// Store only the page URL as the original URL in the DB.
 	for _, res := range results {
 		img := &models.Image{
 			GalleryID:   item.TargetID,
 			Filename:    res.Filename,
-			OriginalURL: &item.URL,
+			OriginalURL: &pageURL,
 			FileHash:    &res.FileHash,
 			IsVideo:     isVideoContentType(res.ContentType),
 			VRMode:      string(models.VRModeNone),
@@ -82,6 +88,16 @@ func (p *Processors) processImage(ctx context.Context, item *models.DownloadQueu
 	}
 
 	return nil
+}
+
+// splitQueueURL splits a queue URL that may contain a pipe-separated
+// thumbnail URL: "pageURL|thumbnailURL" -> (pageURL, thumbnailURL).
+// If there is no pipe, thumbnailURL is empty.
+func splitQueueURL(raw string) (pageURL, thumbnailURL string) {
+	if idx := strings.Index(raw, "|"); idx >= 0 {
+		return raw[:idx], raw[idx+1:]
+	}
+	return raw, ""
 }
 
 // processVideo downloads a video by delegating to the same ripper registry.
