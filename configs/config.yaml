@@ -18,6 +18,7 @@ crawler:
   rate_limit: 500ms
   max_retries: 3
   user_agent: "GoDownload/1.0"
+  crawl_interval: 6h
 
 storage:
   images_dir: "data/images"

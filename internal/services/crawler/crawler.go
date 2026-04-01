@@ -19,16 +19,25 @@ import (
 	"github.com/carlj/godownload/internal/models"
 )
 
+// ImageLink holds a discovered image link from a forum post.
+// PageURL is the <a href> (the image host page).
+// ThumbURL is the <img src> (the thumbnail URL), which some rippers
+// use to derive the full-size image via URL transformation.
+type ImageLink struct {
+	PageURL  string
+	ThumbURL string
+}
+
 // SourceParser extracts gallery and image information from a crawled source page.
 // Each forum/site type has its own implementation.
 type SourceParser interface {
 	// Hosts returns URL host patterns this parser handles,
 	// e.g. []string{"vipergirls.to", "www.vipergirls.to"}.
 	Hosts() []string
-	// Parse receives the page HTML and returns the discovered image page URLs
+	// Parse receives the page HTML and returns the discovered image links
 	// grouped by gallery title. The map key is the gallery title (or "" for
 	// ungrouped images).
-	Parse(ctx context.Context, body, pageURL string) (map[string][]string, error)
+	Parse(ctx context.Context, body, pageURL string) (map[string][]ImageLink, error)
 }
 
 // job represents a single crawl request.
@@ -68,6 +77,7 @@ func New(db *database.DB, cfg config.CrawlerConfig) *Crawler {
 		stopCh:  make(chan struct{}),
 	}
 	c.start()
+	c.startScheduler()
 	return c
 }
 
@@ -110,6 +120,72 @@ func (c *Crawler) Stop() {
 		close(c.stopCh)
 		c.wg.Wait()
 	})
+}
+
+// startScheduler launches a background goroutine that periodically checks
+// enabled sources and enqueues any that are stale (last_crawled_at older
+// than cfg.CrawlInterval or NULL). If CrawlInterval is zero the scheduler
+// is disabled.
+func (c *Crawler) startScheduler() {
+	interval := c.cfg.CrawlInterval
+	if interval <= 0 {
+		slog.Info("crawler: scheduler disabled (crawl_interval <= 0)")
+		return
+	}
+
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+
+		// Run an initial check shortly after startup.
+		timer := time.NewTimer(30 * time.Second)
+		defer timer.Stop()
+
+		for {
+			select {
+			case <-c.stopCh:
+				return
+			case <-timer.C:
+				c.scheduleStale(interval)
+				timer.Reset(interval)
+			}
+		}
+	}()
+}
+
+// scheduleStale queries all enabled sources and enqueues those whose
+// last_crawled_at is older than the crawl interval (or NULL).
+func (c *Crawler) scheduleStale(interval time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	sources, err := c.db.ListSources(ctx)
+	if err != nil {
+		slog.Error("crawler: scheduler listing sources", "error", err)
+		return
+	}
+
+	cutoff := time.Now().Add(-interval)
+	enqueued := 0
+
+	for i := range sources {
+		s := &sources[i]
+		if !s.Enabled {
+			continue
+		}
+		if s.LastCrawledAt != nil && s.LastCrawledAt.After(cutoff) {
+			continue
+		}
+		c.enqueue(job{source: s, fullSync: false})
+		enqueued++
+	}
+
+	if enqueued > 0 {
+		slog.Info("crawler: scheduler enqueued stale sources",
+			"count", enqueued,
+			"interval", interval,
+		)
+	}
 }
 
 // EnqueueSource adds an incremental crawl job for the given source.
@@ -195,7 +271,7 @@ func (c *Crawler) process(j job) {
 
 	// Create galleries and enqueue image downloads.
 	totalImages := 0
-	for title, imageURLs := range galleries {
+	for title, imageLinks := range galleries {
 		galleryID, err := c.ensureGallery(ctx, src.ID, title, src.URL)
 		if err != nil {
 			slog.Error("crawler: creating gallery",
@@ -205,16 +281,24 @@ func (c *Crawler) process(j job) {
 			continue
 		}
 
-		for _, imgURL := range imageURLs {
+		for _, link := range imageLinks {
+			// Store the page URL as the primary URL, and encode the thumbnail
+			// URL in a pipe-separated format so the queue processor can pass
+			// it to ThumbnailRipper-aware rippers.
+			queueURL := link.PageURL
+			if link.ThumbURL != "" {
+				queueURL = link.PageURL + "|" + link.ThumbURL
+			}
+
 			item := &models.DownloadQueue{
 				Type:     string(models.QueueTypeImage),
-				URL:      imgURL,
+				URL:      queueURL,
 				TargetID: &galleryID,
 			}
 			if err := c.db.EnqueueItem(ctx, item); err != nil {
 				slog.Error("crawler: enqueueing image",
 					"error", err,
-					"url", imgURL,
+					"url", link.PageURL,
 				)
 				continue
 			}

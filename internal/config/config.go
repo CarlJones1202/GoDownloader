@@ -43,6 +43,7 @@ type CrawlerConfig struct {
 	RateLimit      time.Duration `yaml:"rate_limit"`
 	MaxRetries     int           `yaml:"max_retries"`
 	UserAgent      string        `yaml:"user_agent"`
+	CrawlInterval  time.Duration `yaml:"crawl_interval"`
 }
 
 // StorageConfig holds file storage paths.
@@ -105,6 +106,7 @@ func defaults() *Config {
 			RateLimit:      500 * time.Millisecond,
 			MaxRetries:     3,
 			UserAgent:      "GoDownload/1.0",
+			CrawlInterval:  6 * time.Hour,
 		},
 		Storage: StorageConfig{
 			ImagesDir:     "data/images",

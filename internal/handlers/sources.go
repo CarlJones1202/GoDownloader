@@ -70,6 +70,12 @@ func (h *SourceHandler) create(c *gin.Context) {
 		handleDBError(c, err)
 		return
 	}
+
+	// Automatically trigger a crawl for the newly created source.
+	if s.Enabled {
+		h.crawler.EnqueueSource(s)
+	}
+
 	respondCreated(c, s)
 }
 
