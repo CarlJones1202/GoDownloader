@@ -1,9 +1,12 @@
 package providers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 )
 
@@ -26,8 +29,63 @@ func NewStashDB(client *http.Client, userAgent, apiKey string) *StashDB {
 	}
 }
 
-// stashDBPerformerResponse is the top-level GraphQL response shape.
-type stashDBPerformerResponse struct {
+// graphQLRequest is the standard GraphQL request envelope.
+type graphQLRequest struct {
+	Query     string         `json:"query"`
+	Variables map[string]any `json:"variables,omitempty"`
+}
+
+// --- Response types matching StashDB schema (aligned with AG reference) ---
+
+type stashDBPerformer struct {
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Disambiguation string   `json:"disambiguation"`
+	Aliases        []string `json:"aliases"`
+	Gender         string   `json:"gender"`
+	Birthdate      *struct {
+		Date string `json:"date"`
+	} `json:"birthdate"`
+	Country      string `json:"country"`
+	Height       *int   `json:"height"` // cm
+	HairColor    string `json:"hair_color"`
+	EyeColor     string `json:"eye_color"`
+	Ethnicity    string `json:"ethnicity"`
+	Measurements *struct {
+		BandSize int    `json:"band_size"`
+		CupSize  string `json:"cup_size"`
+		Waist    int    `json:"waist"`
+		Hip      int    `json:"hip"`
+	} `json:"measurements"`
+	Tattoos []struct {
+		Location    string `json:"location"`
+		Description string `json:"description"`
+	} `json:"tattoos"`
+	Piercings []struct {
+		Location    string `json:"location"`
+		Description string `json:"description"`
+	} `json:"piercings"`
+	URLs []struct {
+		URL  string `json:"url"`
+		Type string `json:"type"`
+	} `json:"urls"`
+	Images []struct {
+		URL string `json:"url"`
+	} `json:"images"`
+}
+
+type stashDBSearchResponse struct {
+	Data struct {
+		QueryPerformers struct {
+			Performers []stashDBPerformer `json:"performers"`
+		} `json:"queryPerformers"`
+	} `json:"data"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
+type stashDBGetResponse struct {
 	Data struct {
 		FindPerformer *stashDBPerformer `json:"findPerformer"`
 	} `json:"data"`
@@ -36,77 +94,63 @@ type stashDBPerformerResponse struct {
 	} `json:"errors"`
 }
 
-type stashDBSearchResponse struct {
-	Data struct {
-		SearchPerformer []stashDBPerformer `json:"searchPerformer"`
-	} `json:"data"`
-	Errors []struct {
-		Message string `json:"message"`
-	} `json:"errors"`
-}
-
-type stashDBPerformer struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	Aliases      []string `json:"aliases"`
-	BirthDate    *string  `json:"birth_date"`
-	Country      *string  `json:"country"`
-	Ethnicity    *string  `json:"ethnicity"`
-	HairColor    *string  `json:"hair_color"`
-	EyeColor     *string  `json:"eye_color"`
-	Height       *int     `json:"height"` // cm
-	Weight       *int     `json:"weight"` // kg
-	Measurements *string  `json:"measurements"`
-	Tattoos      []struct {
-		Description string `json:"description"`
-	} `json:"tattoos"`
-	Piercings []struct {
-		Description string `json:"description"`
-	} `json:"piercings"`
-	Images []struct {
-		URL string `json:"url"`
-	} `json:"images"`
-}
-
+// The performer fragment used in both search and get queries.
+// Matches AG reference fields exactly.
 const performerFragment = `
 	id
 	name
+	disambiguation
 	aliases
-	birth_date
+	gender
+	birthdate { date }
 	country
-	ethnicity
+	height
 	hair_color
 	eye_color
-	height
-	weight
-	measurements
-	tattoos { description }
-	piercings { description }
+	ethnicity
+	measurements {
+		band_size
+		cup_size
+		waist
+		hip
+	}
+	tattoos {
+		location
+		description
+	}
+	piercings {
+		location
+		description
+	}
+	urls {
+		url
+		type
+	}
 	images { url }
 `
 
 // SearchByName searches StashDB for performers matching the given name.
+// Uses queryPerformers (same as AG reference) for exact name matching.
 func (s *StashDB) SearchByName(ctx context.Context, name string) ([]PersonInfo, error) {
-	query := fmt.Sprintf(`{
-		"query": "query { searchPerformer(term: %q) { %s } }"
-	}`, name, performerFragment)
-
-	body, err := s.graphql(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("stashdb: search %q: %w", name, err)
-	}
+	query := fmt.Sprintf(`
+		query SearchPerformers($name: String!) {
+			queryPerformers(input: {names: $name, page: 1, per_page: 20}) {
+				performers { %s }
+			}
+		}
+	`, performerFragment)
 
 	var resp stashDBSearchResponse
-	if err := json.Unmarshal([]byte(body), &resp); err != nil {
-		return nil, fmt.Errorf("stashdb: decoding search response: %w", err)
+	if err := s.execute(ctx, query, map[string]any{"name": name}, &resp); err != nil {
+		return nil, fmt.Errorf("stashdb: search %q: %w", name, err)
 	}
 
 	if len(resp.Errors) > 0 {
 		return nil, fmt.Errorf("stashdb: graphql error: %s", resp.Errors[0].Message)
 	}
 
-	results := make([]PersonInfo, 0, len(resp.Data.SearchPerformer))
-	for _, p := range resp.Data.SearchPerformer {
+	results := make([]PersonInfo, 0, len(resp.Data.QueryPerformers.Performers))
+	for _, p := range resp.Data.QueryPerformers.Performers {
 		results = append(results, mapStashDBPerformer(p))
 	}
 	return results, nil
@@ -114,18 +158,15 @@ func (s *StashDB) SearchByName(ctx context.Context, name string) ([]PersonInfo, 
 
 // GetByID fetches a single performer by their StashDB UUID.
 func (s *StashDB) GetByID(ctx context.Context, id string) (*PersonInfo, error) {
-	query := fmt.Sprintf(`{
-		"query": "query { findPerformer(id: %q) { %s } }"
-	}`, id, performerFragment)
+	query := fmt.Sprintf(`
+		query GetPerformer($id: ID!) {
+			findPerformer(id: $id) { %s }
+		}
+	`, performerFragment)
 
-	body, err := s.graphql(ctx, query)
-	if err != nil {
+	var resp stashDBGetResponse
+	if err := s.execute(ctx, query, map[string]any{"id": id}, &resp); err != nil {
 		return nil, fmt.Errorf("stashdb: get %q: %w", id, err)
-	}
-
-	var resp stashDBPerformerResponse
-	if err := json.Unmarshal([]byte(body), &resp); err != nil {
-		return nil, fmt.Errorf("stashdb: decoding response: %w", err)
 	}
 
 	if len(resp.Errors) > 0 {
@@ -140,19 +181,53 @@ func (s *StashDB) GetByID(ctx context.Context, id string) (*PersonInfo, error) {
 	return &info, nil
 }
 
-// graphql sends a GraphQL request to the StashDB endpoint.
-func (s *StashDB) graphql(ctx context.Context, jsonBody string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, stashDBEndpoint, nil)
-	if err != nil {
-		return "", err
+// execute sends a GraphQL request to StashDB and decodes the response.
+// This matches the AG reference implementation: proper JSON-marshalled
+// {query, variables} body, ApiKey header for authentication.
+func (s *StashDB) execute(ctx context.Context, query string, variables map[string]any, dest any) error {
+	reqBody := graphQLRequest{
+		Query:     query,
+		Variables: variables,
 	}
 
-	// If we have an API key, attach it.
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("marshalling graphql request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, stashDBEndpoint, bytes.NewReader(jsonBody))
+	if err != nil {
+		return fmt.Errorf("building request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	if s.userAgent != "" {
+		req.Header.Set("User-Agent", s.userAgent)
+	}
+
 	if s.apiKey != "" {
 		req.Header.Set("ApiKey", s.apiKey)
+	} else {
+		slog.Warn("stashdb: no API key configured — request will likely fail with 'not authorized'")
 	}
 
-	return s.postJSON(ctx, stashDBEndpoint, jsonBody)
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("POST %q: %w", stashDBEndpoint, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("stashdb returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(dest); err != nil {
+		return fmt.Errorf("decoding stashdb response: %w", err)
+	}
+
+	return nil
 }
 
 // mapStashDBPerformer converts a StashDB performer to our unified PersonInfo.
@@ -163,47 +238,77 @@ func mapStashDBPerformer(p stashDBPerformer) PersonInfo {
 		ExternalID: ptrStr(p.ID),
 	}
 
-	if p.BirthDate != nil {
-		info.BirthDate = parseDate(*p.BirthDate)
+	if p.Birthdate != nil && p.Birthdate.Date != "" {
+		info.BirthDate = parseDate(p.Birthdate.Date)
 	}
-	info.Nationality = p.Country
-	info.Ethnicity = p.Ethnicity
-	info.HairColor = p.HairColor
-	info.EyeColor = p.EyeColor
+	info.Nationality = ptrStr(p.Country)
+	info.Ethnicity = ptrStr(p.Ethnicity)
+	info.HairColor = ptrStr(p.HairColor)
+	info.EyeColor = ptrStr(p.EyeColor)
 
-	if p.Height != nil {
+	if p.Height != nil && *p.Height > 0 {
 		h := fmt.Sprintf("%dcm", *p.Height)
 		info.Height = &h
 	}
-	if p.Weight != nil {
-		w := fmt.Sprintf("%dkg", *p.Weight)
-		info.Weight = &w
-	}
-	info.Measurements = p.Measurements
 
-	// Concatenate tattoos.
+	// Format measurements like AG: "Band: 32, Cup: B, Waist: 24, Hip: 34"
+	if p.Measurements != nil {
+		m := fmt.Sprintf("%d%s-%d-%d",
+			p.Measurements.BandSize, p.Measurements.CupSize,
+			p.Measurements.Waist, p.Measurements.Hip)
+		// Only set if we have meaningful data (not all zeros).
+		if p.Measurements.BandSize > 0 || p.Measurements.CupSize != "" {
+			info.Measurements = &m
+		}
+	}
+
+	// Concatenate tattoos with location.
 	if len(p.Tattoos) > 0 {
-		descs := make([]string, len(p.Tattoos))
-		for i, t := range p.Tattoos {
-			descs[i] = t.Description
+		descs := make([]string, 0, len(p.Tattoos))
+		for _, t := range p.Tattoos {
+			if t.Description != "" && t.Location != "" {
+				descs = append(descs, fmt.Sprintf("%s (%s)", t.Description, t.Location))
+			} else if t.Description != "" {
+				descs = append(descs, t.Description)
+			} else if t.Location != "" {
+				descs = append(descs, t.Location)
+			}
 		}
-		joined := joinNonEmpty(descs, "; ")
-		info.Tattoos = ptrStr(joined)
+		if len(descs) > 0 {
+			joined := joinNonEmpty(descs, "; ")
+			info.Tattoos = ptrStr(joined)
+		}
 	}
 
-	// Concatenate piercings.
+	// Concatenate piercings with location.
 	if len(p.Piercings) > 0 {
-		descs := make([]string, len(p.Piercings))
-		for i, pi := range p.Piercings {
-			descs[i] = pi.Description
+		descs := make([]string, 0, len(p.Piercings))
+		for _, pi := range p.Piercings {
+			if pi.Description != "" && pi.Location != "" {
+				descs = append(descs, fmt.Sprintf("%s (%s)", pi.Description, pi.Location))
+			} else if pi.Description != "" {
+				descs = append(descs, pi.Description)
+			} else if pi.Location != "" {
+				descs = append(descs, pi.Location)
+			}
 		}
-		joined := joinNonEmpty(descs, "; ")
-		info.Piercings = ptrStr(joined)
+		if len(descs) > 0 {
+			joined := joinNonEmpty(descs, "; ")
+			info.Piercings = ptrStr(joined)
+		}
 	}
 
-	// Take the first image.
-	if len(p.Images) > 0 && p.Images[0].URL != "" {
-		info.ImageURL = &p.Images[0].URL
+	// Collect ALL image URLs for photo downloads.
+	if len(p.Images) > 0 {
+		for _, img := range p.Images {
+			if img.URL != "" {
+				info.ImageURLs = append(info.ImageURLs, img.URL)
+			}
+		}
+		// Primary image is the first one.
+		if len(info.ImageURLs) > 0 {
+			info.ImageURL = &info.ImageURLs[0]
+		}
 	}
 
 	return info
