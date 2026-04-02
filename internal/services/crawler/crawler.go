@@ -36,7 +36,7 @@ type SourceParser interface {
 	Hosts() []string
 	// Parse receives the page HTML, page URL, and optional post ID filter.
 	// If postID is non-empty, only that specific post is processed.
-	// If postID is empty, only the first post is processed.
+	// If postID is empty, all posts are processed.
 	// Returns discovered image links grouped by gallery title.
 	Parse(ctx context.Context, body, pageURL, postID string) (map[string][]ImageLink, error)
 }
@@ -251,7 +251,7 @@ func (c *Crawler) process(j job) {
 	}
 
 	// Extract post ID filter from URL fragment (#postXXX) or query param (?p=XXX).
-	// If empty, the parser will process only the first post.
+	// If empty, all posts are processed.
 	postIDFilter := extractPostID(src.URL)
 
 	// Fetch the page.
@@ -322,6 +322,14 @@ func (c *Crawler) process(j job) {
 		"galleries", len(galleries),
 		"images_enqueued", totalImages,
 	)
+
+	if totalImages == 0 {
+		slog.Warn("crawler: no images found in source",
+			"source_id", src.ID,
+			"url", src.URL,
+			"post_filter", postIDFilter,
+		)
+	}
 
 	// Rate limit.
 	time.Sleep(c.cfg.RateLimit)

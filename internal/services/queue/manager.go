@@ -34,10 +34,18 @@ func (f ProcessorFunc) Process(ctx context.Context, item *models.DownloadQueue) 
 	return f(ctx, item)
 }
 
+// DBWriter interface for database operations that should be serialized.
+type DBWriter interface {
+	ResetActiveToPending(ctx context.Context) (int64, error)
+	UpdateQueueStatus(ctx context.Context, id int64, status models.QueueStatus, errMsg *string) error
+	IncrementRetry(ctx context.Context, id int64) error
+}
+
 // Manager polls the database for pending queue items and dispatches them
 // to registered processors using a bounded worker pool.
 type Manager struct {
 	db         *database.DB
+	dbWriter   DBWriter
 	processors map[string]Processor
 	workers    int
 	maxRetries int
@@ -61,9 +69,10 @@ type statusReporter interface {
 }
 
 // New creates a Manager with the given number of workers and max retries.
-func New(db *database.DB, workers, maxRetries int) *Manager {
+func New(db *database.DB, dbWriter DBWriter, workers, maxRetries int) *Manager {
 	return &Manager{
 		db:         db,
+		dbWriter:   dbWriter,
 		processors: map[string]Processor{},
 		workers:    workers,
 		maxRetries: maxRetries,
@@ -94,7 +103,7 @@ func (m *Manager) recoverStuckItems() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	rows, err := m.db.ResetActiveToPending(ctx)
+	rows, err := m.dbWriter.ResetActiveToPending(ctx)
 	if err != nil {
 		slog.Error("queue: recovery: failed to reset stuck items", "error", err)
 		return
@@ -161,7 +170,7 @@ func (m *Manager) loop() {
 						if r := recover(); r != nil {
 							slog.Error("queue: worker panicked", "id", item.ID, "type", item.Type, "panic", r)
 							msg := fmt.Sprintf("panic: %v", r)
-							_ = m.db.UpdateQueueStatus(context.Background(), item.ID, models.QueueStatusFailed, &msg)
+							_ = m.dbWriter.UpdateQueueStatus(context.Background(), item.ID, models.QueueStatusFailed, &msg)
 						}
 						<-sem // release slot
 						m.wg.Done()
@@ -179,7 +188,7 @@ func (m *Manager) dispatch(item *models.DownloadQueue) {
 	if !ok {
 		slog.Warn("queue: no processor registered", "type", item.Type, "id", item.ID)
 		msg := "no processor registered for type: " + item.Type
-		_ = m.db.UpdateQueueStatus(
+		_ = m.dbWriter.UpdateQueueStatus(
 			context.Background(),
 			item.ID,
 			models.QueueStatusFailed,
@@ -205,7 +214,7 @@ func (m *Manager) dispatch(item *models.DownloadQueue) {
 
 	if err == nil {
 		slog.Info("queue: item completed", "id", item.ID, "type", item.Type)
-		_ = m.db.UpdateQueueStatus(statusCtx, item.ID, models.QueueStatusCompleted, nil)
+		_ = m.dbWriter.UpdateQueueStatus(statusCtx, item.ID, models.QueueStatusCompleted, nil)
 		if m.statusTracker != nil {
 			m.statusTracker.ItemCompleted(item.ID)
 		}
@@ -222,12 +231,12 @@ func (m *Manager) dispatch(item *models.DownloadQueue) {
 
 	if item.RetryCount >= m.maxRetries {
 		msg := err.Error()
-		_ = m.db.UpdateQueueStatus(statusCtx, item.ID, models.QueueStatusFailed, &msg)
+		_ = m.dbWriter.UpdateQueueStatus(statusCtx, item.ID, models.QueueStatusFailed, &msg)
 		if m.statusTracker != nil {
 			m.statusTracker.ItemFailed(item.ID)
 		}
 		return
 	}
 
-	_ = m.db.IncrementRetry(statusCtx, item.ID)
+	_ = m.dbWriter.IncrementRetry(statusCtx, item.ID)
 }

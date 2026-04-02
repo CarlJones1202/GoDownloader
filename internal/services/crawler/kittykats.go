@@ -37,7 +37,7 @@ func (k *KittyKats) Hosts() []string {
 
 // Parse implements SourceParser.
 // If postID is non-empty, only that specific post is processed.
-// If postID is empty, only the first post is processed.
+// If postID is empty, all posts are processed.
 func (k *KittyKats) Parse(_ context.Context, body, _ string, postID string) (map[string][]ImageLink, error) {
 	// Try XenForo-style bbWrapper first.
 	galleries, err := parseForumPosts(body, kkXFPostRe, kkTitleRe, kkImgLinkRe, kkLinkRe, postID)

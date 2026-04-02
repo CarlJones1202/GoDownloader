@@ -6,7 +6,7 @@
 //	reg := ripper.NewRegistry(cfg.Storage.ImagesDir, client)
 //	providers.RegisterAll(reg, client, cfg.Crawler.UserAgent)
 //
-//	procs := processors.New(db, reg, cfg)
+//	procs := processors.New(db, dbWriter, reg, cfg)
 //	procs.Register(queueMgr)
 package processors
 
@@ -22,21 +22,55 @@ import (
 	"github.com/carlj/godownload/internal/models"
 	"github.com/carlj/godownload/internal/services/queue"
 	"github.com/carlj/godownload/internal/services/ripper"
+	"github.com/carlj/godownload/internal/services/video"
 	"github.com/carlj/godownload/internal/services/workers"
 )
 
+// DBWriter interface for database write operations.
+type DBWriter interface {
+	CreateImage(ctx context.Context, img *models.Image) error
+	CreateGallery(ctx context.Context, g *models.Gallery) error
+	SetGalleryThumbnail(ctx context.Context, galleryID int64, thumbPath string) error
+	TouchSourceCrawledAt(ctx context.Context, id int64) error
+	EnqueueItem(ctx context.Context, item *models.DownloadQueue) error
+}
+
 // Processors holds all queue processor implementations.
 type Processors struct {
-	db    *database.DB
-	reg   *ripper.Registry
-	cfg   config.Config
-	thumb *workers.ThumbnailWorker
-	color *workers.ColorWorker
+	db        *database.DB
+	dbWriter  DBWriter
+	reg       *ripper.Registry
+	videoReg  *video.Registry
+	cfg       config.Config
+	thumb     *workers.ThumbnailWorker
+	color     *workers.ColorWorker
+	videoW    *workers.VideoWorker
+	trickplay *workers.TrickplayWorker
 }
 
 // New creates a Processors instance.
-func New(db *database.DB, reg *ripper.Registry, cfg config.Config, thumb *workers.ThumbnailWorker, color *workers.ColorWorker) *Processors {
-	return &Processors{db: db, reg: reg, cfg: cfg, thumb: thumb, color: color}
+func New(
+	db *database.DB,
+	dbWriter DBWriter,
+	reg *ripper.Registry,
+	cfg config.Config,
+	thumb *workers.ThumbnailWorker,
+	color *workers.ColorWorker,
+	videoReg *video.Registry,
+	videoW *workers.VideoWorker,
+	trickplay *workers.TrickplayWorker,
+) *Processors {
+	return &Processors{
+		db:        db,
+		dbWriter:  dbWriter,
+		reg:       reg,
+		videoReg:  videoReg,
+		cfg:       cfg,
+		thumb:     thumb,
+		color:     color,
+		videoW:    videoW,
+		trickplay: trickplay,
+	}
 }
 
 // Register binds all processors to the queue Manager.
@@ -77,7 +111,7 @@ func (p *Processors) processImage(ctx context.Context, item *models.DownloadQueu
 			VRMode:      string(models.VRModeNone),
 		}
 
-		if err := p.db.CreateImage(ctx, img); err != nil {
+		if err := p.dbWriter.CreateImage(ctx, img); err != nil {
 			slog.Error("processor: saving image record", "error", err, "file", res.Filename)
 			// Non-fatal: log and continue with remaining results.
 			continue
@@ -109,44 +143,65 @@ func splitQueueURL(raw string) (pageURL, thumbnailURL string) {
 	return raw, ""
 }
 
-// processVideo downloads a video by delegating to the same ripper registry.
-// Videos are stored in the configured videos directory.
+// processVideo downloads a video using the dedicated video ripper registry,
+// then runs post-processing: ffprobe metadata extraction, thumbnail generation,
+// and trickplay sprite sheet creation.
 func (p *Processors) processVideo(ctx context.Context, item *models.DownloadQueue) error {
 	slog.Info("processor: downloading video", "url", item.URL, "queue_id", item.ID)
 
-	// Override destination to videos directory by creating a separate registry
-	// view — here we reuse the same registry but note the destination is
-	// determined by the registry's configured destDir. For videos, callers
-	// should enqueue items with the video ripper registry pointed at the videos dir.
-	// For now, we delegate to the shared registry (Phase 3 will differentiate).
-	results, err := p.reg.Download(ctx, item.URL)
+	// Use the dedicated video ripper registry if available.
+	if p.videoReg == nil {
+		return fmt.Errorf("processor: video registry not configured")
+	}
+
+	result, err := p.videoReg.Download(ctx, item.URL)
 	if err != nil {
 		return fmt.Errorf("processor: video download %q: %w", item.URL, err)
 	}
 
-	if len(results) == 0 {
-		return fmt.Errorf("processor: no video files downloaded from %q", item.URL)
+	img := &models.Image{
+		GalleryID:   item.TargetID,
+		Filename:    result.Filename,
+		OriginalURL: &item.URL,
+		FileHash:    &result.FileHash,
+		IsVideo:     true,
+		VRMode:      string(models.VRModeNone),
 	}
 
-	for _, res := range results {
-		img := &models.Image{
-			GalleryID:   item.TargetID,
-			Filename:    res.Filename,
-			OriginalURL: &item.URL,
-			FileHash:    &res.FileHash,
-			IsVideo:     true,
-			VRMode:      string(models.VRModeNone),
-		}
+	if err := p.dbWriter.CreateImage(ctx, img); err != nil {
+		return fmt.Errorf("processor: saving video record: %w", err)
+	}
 
-		if err := p.db.CreateImage(ctx, img); err != nil {
-			slog.Error("processor: saving video record", "error", err, "file", res.Filename)
-			continue
-		}
+	slog.Info("processor: video saved",
+		"image_id", img.ID,
+		"filename", result.Filename,
+		"hash", result.FileHash,
+	)
 
-		slog.Info("processor: video saved",
-			"image_id", img.ID,
-			"filename", res.Filename,
-		)
+	// Post-processing pipeline:
+	// 1. Extract metadata (ffprobe) and generate thumbnail (ffmpeg).
+	if p.videoW != nil {
+		if err := p.videoW.ProcessVideo(ctx, img); err != nil {
+			slog.Warn("processor: video post-processing failed",
+				"image_id", img.ID, "error", err)
+		}
+	}
+
+	// 2. Set as gallery thumbnail (first-video-wins, using the video thumbnail).
+	if img.GalleryID != nil {
+		thumbFilename := thumbnailName(img.Filename)
+		if err := p.dbWriter.SetGalleryThumbnail(ctx, *img.GalleryID, thumbFilename); err != nil {
+			slog.Warn("processor: setting gallery thumbnail for video",
+				"gallery_id", *img.GalleryID, "error", err)
+		}
+	}
+
+	// 3. Generate trickplay sprite sheet + WebVTT.
+	if p.trickplay != nil {
+		if err := p.trickplay.GenerateForVideo(ctx, img); err != nil {
+			slog.Warn("processor: trickplay generation failed",
+				"image_id", img.ID, "error", err)
+		}
 	}
 
 	return nil
@@ -175,7 +230,7 @@ func (p *Processors) processGallery(ctx context.Context, item *models.DownloadQu
 			URL:   &item.URL,
 			Title: &title,
 		}
-		if err := p.db.CreateGallery(ctx, gallery); err != nil {
+		if err := p.dbWriter.CreateGallery(ctx, gallery); err != nil {
 			return fmt.Errorf("processor: creating gallery record: %w", err)
 		}
 		galleryID = &gallery.ID
@@ -193,7 +248,7 @@ func (p *Processors) processGallery(ctx context.Context, item *models.DownloadQu
 			VRMode:      string(models.VRModeNone),
 		}
 
-		if err := p.db.CreateImage(ctx, img); err != nil {
+		if err := p.dbWriter.CreateImage(ctx, img); err != nil {
 			slog.Error("processor: saving gallery image", "error", err, "file", res.Filename)
 			continue
 		}
@@ -222,7 +277,7 @@ func (p *Processors) processCrawl(ctx context.Context, item *models.DownloadQueu
 	)
 	// Update last_crawled_at if we have a source ID.
 	if item.TargetID != nil {
-		if err := p.db.TouchSourceCrawledAt(ctx, *item.TargetID); err != nil {
+		if err := p.dbWriter.TouchSourceCrawledAt(ctx, *item.TargetID); err != nil {
 			return fmt.Errorf("processor: touching source %d crawled_at: %w", *item.TargetID, err)
 		}
 	}
@@ -259,7 +314,7 @@ func (p *Processors) generateThumbnail(ctx context.Context, img *models.Image) {
 	// Set as gallery thumbnail (first-image-wins via SetGalleryThumbnail).
 	if img.GalleryID != nil {
 		thumbFilename := thumbnailName(img.Filename)
-		if err := p.db.SetGalleryThumbnail(ctx, *img.GalleryID, thumbFilename); err != nil {
+		if err := p.dbWriter.SetGalleryThumbnail(ctx, *img.GalleryID, thumbFilename); err != nil {
 			slog.Warn("processor: setting gallery thumbnail", "gallery_id", *img.GalleryID, "error", err)
 		}
 	}

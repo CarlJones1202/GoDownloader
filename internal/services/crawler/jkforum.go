@@ -37,7 +37,7 @@ func (j *JKForum) Hosts() []string {
 
 // Parse implements SourceParser.
 // If postID is non-empty, only that specific post is processed.
-// If postID is empty, only the first post is processed.
+// If postID is empty, all posts are processed.
 func (j *JKForum) Parse(_ context.Context, body, _ string, postID string) (map[string][]ImageLink, error) {
 	// Try vBulletin-style first.
 	galleries, err := parseForumPosts(body, jkPostRe, jkTitleRe, jkImgLinkRe, jkLinkRe, postID)

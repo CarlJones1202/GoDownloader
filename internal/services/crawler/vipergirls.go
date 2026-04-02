@@ -36,7 +36,7 @@ func (v *ViperGirls) Hosts() []string {
 
 // Parse implements SourceParser.
 // If postID is non-empty, only that specific post is processed.
-// If postID is empty, only the first post is processed.
+// If postID is empty, all posts are processed.
 func (v *ViperGirls) Parse(_ context.Context, body, _ string, postID string) (map[string][]ImageLink, error) {
 	return parseForumPosts(body, vgPostRe, vgTitleRe, vgImgLinkRe, vgLinkRe, postID)
 }
@@ -44,7 +44,7 @@ func (v *ViperGirls) Parse(_ context.Context, body, _ string, postID string) (ma
 // parseForumPosts is a shared parser for vBulletin-style forums.
 // It extracts posts, optional titles, and image host links.
 // If postID is non-empty, only that specific post is processed.
-// If postID is empty, only the first post is processed.
+// If postID is empty, all posts are processed.
 func parseForumPosts(body string, postRe, titleRe, imgLinkRe, linkRe *regexp.Regexp, postID string) (map[string][]ImageLink, error) {
 	galleries := make(map[string][]ImageLink)
 
@@ -53,15 +53,15 @@ func parseForumPosts(body string, postRe, titleRe, imgLinkRe, linkRe *regexp.Reg
 		// Match specific post by ID
 		postRegex = regexp.MustCompile(`(?s)<div[^>]+id="post_message_` + postID + `"[^>]*>(.*?)</div>`)
 	} else {
-		// Match first post only - use a non-greedy match that stops at first post
+		// Match all posts
 		postRegex = regexp.MustCompile(`(?s)<div[^>]+id="post_message_\d+"[^>]*>(.*?)</div>`)
 	}
 
 	posts := postRegex.FindAllStringSubmatch(body, -1)
 
 	// If filtering by specific postID, we expect at most 1 result
-	// If getting first post, we take only the first match
-	maxPosts := 1
+	// If getting all posts, process all of them
+	maxPosts := len(posts)
 	if postID != "" {
 		maxPosts = 1 // could be 0 if post not found
 	}
