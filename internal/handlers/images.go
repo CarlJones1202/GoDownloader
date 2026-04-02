@@ -42,6 +42,7 @@ func (h *ImageHandler) list(c *gin.Context) {
 	f := database.ImageFilter{
 		Limit:  limit,
 		Offset: offset,
+		SortBy: database.SortByNewest,
 	}
 	if v := c.Query("gallery_id"); v != "" {
 		if id, ok := strToInt64(v); ok {
@@ -55,6 +56,14 @@ func (h *ImageHandler) list(c *gin.Context) {
 	if v := c.Query("is_favorite"); v != "" {
 		b := v == "true" || v == "1"
 		f.IsFavorite = &b
+	}
+	if v := c.Query("sort_by"); v != "" {
+		f.SortBy = v
+	}
+	if v := c.Query("random_seed"); v != "" {
+		if seed, err := strconv.ParseInt(v, 10, 64); err == nil {
+			f.RandomSeed = seed
+		}
 	}
 
 	images, err := h.db.ListImages(c.Request.Context(), f)

@@ -49,6 +49,16 @@ export interface Person {
   aliases?: string;
   birth_date?: string;
   nationality?: string;
+  ethnicity?: string;
+  hair_color?: string;
+  eye_color?: string;
+  height?: string;
+  weight?: string;
+  measurements?: string;
+  tattoos?: string;
+  piercings?: string;
+  biography?: string;
+  photos?: string; // JSON array of local photo paths
   created_at: string;
 }
 
@@ -136,6 +146,7 @@ export interface PersonInfo {
   piercings?: string;
   biography?: string;
   image_url?: string;
+  image_urls?: string[];
   external_id?: string;
 }
 

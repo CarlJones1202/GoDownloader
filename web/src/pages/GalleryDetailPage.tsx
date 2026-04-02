@@ -43,6 +43,7 @@ export function GalleryDetailPage() {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'largest' | 'smallest'>('newest');
 
   // Metadata search state
   const [showMetadataSearch, setShowMetadataSearch] = useState(false);
@@ -64,8 +65,8 @@ export function GalleryDetailPage() {
   });
 
   const { data: imageList, isLoading: loadingImages } = useQuery({
-    queryKey: ['images', { gallery_id: galleryId }],
-    queryFn: () => imagesApi.list({ gallery_id: galleryId, limit: 200 }),
+    queryKey: ['images', { gallery_id: galleryId, sort_by: sortBy }],
+    queryFn: () => imagesApi.list({ gallery_id: galleryId, limit: 200, sort_by: sortBy }),
   });
 
   const favMut = useMutation({
@@ -350,6 +351,20 @@ export function GalleryDetailPage() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Image sort and grid */}
+      <div className="mb-4 flex justify-end">
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+          className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="largest">Largest first</option>
+          <option value="smallest">Smallest first</option>
+        </select>
       </div>
 
       {/* Images grid */}

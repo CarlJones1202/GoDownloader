@@ -49,9 +49,10 @@ export function Button({
 interface BadgeProps {
   variant?: 'default' | 'success' | 'warning' | 'danger' | 'info';
   children: React.ReactNode;
+  className?: string;
 }
 
-export function Badge({ variant = 'default', children }: BadgeProps) {
+export function Badge({ variant = 'default', children, className }: BadgeProps) {
   return (
     <span
       className={cn(
@@ -61,6 +62,7 @@ export function Badge({ variant = 'default', children }: BadgeProps) {
         variant === 'warning' && 'bg-amber-900/50 text-amber-400',
         variant === 'danger' && 'bg-red-900/50 text-red-400',
         variant === 'info' && 'bg-blue-900/50 text-blue-400',
+        className,
       )}
     >
       {children}
@@ -126,6 +128,25 @@ export function Input({ label, className, ...props }: InputProps) {
     <div>
       {label && <label className="block text-sm text-zinc-400 mb-1">{label}</label>}
       <input
+        className={cn(
+          'w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500',
+          className,
+        )}
+        {...props}
+      />
+    </div>
+  );
+}
+
+interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  label?: string;
+}
+
+export function Textarea({ label, className, ...props }: TextareaProps) {
+  return (
+    <div>
+      {label && <label className="block text-sm text-zinc-400 mb-1">{label}</label>}
+      <textarea
         className={cn(
           'w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500',
           className,

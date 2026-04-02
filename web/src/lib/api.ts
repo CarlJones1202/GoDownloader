@@ -90,6 +90,7 @@ export interface ImageListParams extends PaginationParams {
   gallery_id?: number;
   is_video?: boolean;
   is_favorite?: boolean;
+  sort_by?: 'newest' | 'oldest' | 'largest' | 'smallest';
 }
 
 export const images = {
