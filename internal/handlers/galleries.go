@@ -30,6 +30,7 @@ func NewGalleryHandler(db *database.DB, storage config.StorageConfig, metadataSv
 func (h *GalleryHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("", h.list)
 	rg.POST("", h.create)
+	rg.GET("/metadata-providers", h.metadataProviders)
 	rg.GET("/:id", h.get)
 	rg.PUT("/:id", h.update)
 	rg.DELETE("/:id", h.delete)
@@ -331,7 +332,12 @@ func (h *GalleryHandler) searchMetadata(c *gin.Context) {
 		}
 	}
 
-	results, err := h.metadataSvc.SearchAll(c.Request.Context(), query)
+	results, err := func() ([]providers.GallerySearchResult, error) {
+		if provider := c.Query("provider"); provider != "" {
+			return h.metadataSvc.SearchByProvider(c.Request.Context(), query, provider)
+		}
+		return h.metadataSvc.SearchAll(c.Request.Context(), query)
+	}()
 	if err != nil {
 		slog.Debug("gallery metadata search returned no results", "gallery_id", id, "query", query, "error", err)
 		// Return empty array instead of error — no results is not an error for the UI.
@@ -405,4 +411,10 @@ func (h *GalleryHandler) scrapeMetadata(c *gin.Context) {
 
 	slog.Info("gallery metadata applied", "gallery_id", id, "provider", req.Provider)
 	respondOK(c, gallery)
+}
+
+// metadataProviders returns the list of supported metadata provider names.
+// GET /api/v1/galleries/metadata-providers
+func (h *GalleryHandler) metadataProviders(c *gin.Context) {
+	respondOK(c, h.metadataSvc.ProviderNames())
 }

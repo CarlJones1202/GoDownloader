@@ -45,6 +45,10 @@ type GalleryMetadata struct {
 // This allows the service to use VPN-aware clients for age-gated domains.
 type HTTPClientFunc func(targetURL string) *http.Client
 
+// maxResultsPerProvider limits how many results any single provider can
+// contribute to a search, preventing aggressive scrapers from flooding.
+const maxResultsPerProvider = 15
+
 // GalleryMetadataService coordinates gallery metadata search and scrape
 // operations across all supported providers.
 type GalleryMetadataService struct {
@@ -66,13 +70,31 @@ func NewGalleryMetadataService(getClient HTTPClientFunc, userAgent string) *Gall
 
 // SearchAll searches all providers concurrently for galleries matching query.
 func (s *GalleryMetadataService) SearchAll(ctx context.Context, query string) ([]GallerySearchResult, error) {
+	return s.searchProviders(ctx, query, "")
+}
+
+// SearchByProvider searches a single provider for galleries matching query.
+// The provider name is case-insensitive.
+func (s *GalleryMetadataService) SearchByProvider(ctx context.Context, query, provider string) ([]GallerySearchResult, error) {
+	return s.searchProviders(ctx, query, provider)
+}
+
+// ProviderNames returns the list of supported provider names.
+func (s *GalleryMetadataService) ProviderNames() []string {
+	return []string{
+		"MetArt", "MetartX", "SexArt", "LifeErotic", "EternalDesire", "RylskyArt",
+		"Playboy", "PlayboyPlus", "Vixen", "VivThomas", "WowGirls", "MPLStudios",
+	}
+}
+
+func (s *GalleryMetadataService) searchProviders(ctx context.Context, query, filterProvider string) ([]GallerySearchResult, error) {
 	type providerResult struct {
 		results []GallerySearchResult
 		err     error
 		name    string
 	}
 
-	providers := []struct {
+	allProviders := []struct {
 		name string
 		fn   func(context.Context, string) ([]GallerySearchResult, error)
 	}{
@@ -88,6 +110,25 @@ func (s *GalleryMetadataService) SearchAll(ctx context.Context, query string) ([
 		{"VivThomas", s.searchVivThomas},
 		{"WowGirls", s.searchWowGirls},
 		{"MPLStudios", s.searchMPLStudios},
+	}
+
+	// Filter to a single provider if specified.
+	var providers []struct {
+		name string
+		fn   func(context.Context, string) ([]GallerySearchResult, error)
+	}
+	if filterProvider != "" {
+		for _, p := range allProviders {
+			if strings.EqualFold(p.name, filterProvider) {
+				providers = append(providers, p)
+				break
+			}
+		}
+		if len(providers) == 0 {
+			return nil, fmt.Errorf("unsupported provider: %s", filterProvider)
+		}
+	} else {
+		providers = allProviders
 	}
 
 	ch := make(chan providerResult, len(providers))
@@ -112,10 +153,15 @@ func (s *GalleryMetadataService) SearchAll(ctx context.Context, query string) ([
 	var all []GallerySearchResult
 	for pr := range ch {
 		if pr.err != nil {
-			slog.Debug("gallery metadata search failed", "provider", pr.name, "error", pr.err)
+			slog.Warn("gallery metadata search failed", "provider", pr.name, "error", pr.err)
 			continue
 		}
-		all = append(all, pr.results...)
+		// Cap results per provider to prevent any single provider from flooding.
+		results := pr.results
+		if len(results) > maxResultsPerProvider {
+			results = results[:maxResultsPerProvider]
+		}
+		all = append(all, results...)
 	}
 
 	if len(all) == 0 {
@@ -177,48 +223,74 @@ func (s *GalleryMetadataService) searchMetArtNetwork(_ context.Context, provider
 			return nil, fmt.Errorf("%s search: %w", provider, err)
 		}
 
-		var apiResp struct {
-			Items []struct {
-				Item struct {
-					Name        string `json:"name"`
-					Path        string `json:"path"`
-					PublishedAt string `json:"publishedAt"`
-					Thumbnail   string `json:"thumbnailCoverPath"`
-				} `json:"item"`
-			} `json:"items"`
+		// The MetArt API returns an array of category objects, e.g.:
+		// [{"displayName":"Galleries","total":5,"items":[{"score":68,"type":"GALLERY","item":{...}}]}, ...]
+		// In some cases it may return a single category object (not wrapped in an array).
+		type searchItem struct {
+			Score float64 `json:"score"`
+			Type  string  `json:"type"`
+			Item  struct {
+				Name        string `json:"name"`
+				Path        string `json:"path"`
+				PublishedAt string `json:"publishedAt"`
+				Thumbnail   string `json:"thumbnailCoverPath"`
+			} `json:"item"`
+		}
+		type searchCategory struct {
+			DisplayName string       `json:"displayName"`
+			Items       []searchItem `json:"items"`
 		}
 
-		if err := json.Unmarshal(body, &apiResp); err != nil {
-			return nil, fmt.Errorf("%s: parsing search JSON: %w", provider, err)
+		var categories []searchCategory
+
+		// Try parsing as array first, then as single object.
+		if err := json.Unmarshal(body, &categories); err != nil {
+			var single searchCategory
+			if err2 := json.Unmarshal(body, &single); err2 != nil {
+				return nil, fmt.Errorf("%s: parsing search JSON (array: %v, object: %v)", provider, err, err2)
+			}
+			categories = []searchCategory{single}
 		}
+
+		slog.Info("metart network parse", "provider", provider, "categories", len(categories),
+			"raw_len", len(body))
 
 		var results []GallerySearchResult
-		for _, entry := range apiResp.Items {
-			item := entry.Item
+		for _, cat := range categories {
+			slog.Info("metart category", "provider", provider, "displayName", cat.DisplayName,
+				"items", len(cat.Items))
+			for _, entry := range cat.Items {
+				// Only include GALLERY type items (skip MOVIE, MODEL, etc.)
+				if entry.Type != "" && entry.Type != "GALLERY" {
+					continue
+				}
 
-			// RylskyArt returns non-gallery items too — filter by path.
-			if provider == "RylskyArt" && !strings.Contains(strings.ToLower(item.Path), "/gallery/") {
-				continue
+				item := entry.Item
+
+				// RylskyArt returns non-gallery items too — filter by path.
+				if provider == "RylskyArt" && !strings.Contains(strings.ToLower(item.Path), "/gallery/") {
+					continue
+				}
+
+				galleryURL := baseURL + item.Path
+				thumbURL := baseURL + item.Thumbnail
+
+				dateStr := item.PublishedAt
+				if len(dateStr) > 10 {
+					dateStr = dateStr[:10]
+				}
+
+				results = append(results, GallerySearchResult{
+					Provider:    provider,
+					Title:       item.Name,
+					URL:         galleryURL,
+					Thumbnail:   thumbURL,
+					ReleaseDate: dateStr,
+				})
 			}
-
-			galleryURL := baseURL + item.Path
-			thumbURL := baseURL + item.Thumbnail
-
-			dateStr := item.PublishedAt
-			if len(dateStr) > 10 {
-				dateStr = dateStr[:10]
-			}
-
-			results = append(results, GallerySearchResult{
-				Provider:    provider,
-				Title:       item.Name,
-				URL:         galleryURL,
-				Thumbnail:   thumbURL,
-				ReleaseDate: dateStr,
-			})
 		}
 
-		slog.Debug("metart network search", "provider", provider, "results", len(results))
+		slog.Info("metart network search", "provider", provider, "results", len(results))
 		return results, nil
 	}
 }
@@ -760,10 +832,11 @@ func (s *GalleryMetadataService) searchMPLStudios(ctx context.Context, query str
 	if err := json.Unmarshal(body, &root); err == nil {
 		// Direct gallery parsing from searchFor response (rootArr[1] contains galleries).
 		if results := s.parseMPLSearchForGalleries(root, base); len(results) > 0 {
-			return results, nil
+			return capResults(results, maxResultsPerProvider), nil
 		}
 
 		// Person match — fetch their page and extract galleries.
+		// Only include galleries with title relevance to the query.
 		if href, _, ok := findBestPersonFromSearchFor(root, query); ok {
 			if !strings.HasPrefix(href, "http") {
 				if strings.HasPrefix(href, "/") {
@@ -773,7 +846,12 @@ func (s *GalleryMetadataService) searchMPLStudios(ctx context.Context, query str
 				}
 			}
 			if results, err := s.parseMPLPersonPage(ctx, href, base); err == nil && len(results) > 0 {
-				return results, nil
+				filtered := filterByTitleRelevance(results, query)
+				if len(filtered) > 0 {
+					return capResults(filtered, maxResultsPerProvider), nil
+				}
+				// If no title-relevant results, return a small sample of the person's galleries.
+				return capResults(results, 5), nil
 			}
 		}
 	}
@@ -788,7 +866,11 @@ func (s *GalleryMetadataService) searchMPLStudios(ctx context.Context, query str
 					href = base + href
 				}
 				if results, err := s.parseMPLPersonPage(ctx, href, base); err == nil && len(results) > 0 {
-					return results, nil
+					filtered := filterByTitleRelevance(results, query)
+					if len(filtered) > 0 {
+						return capResults(filtered, maxResultsPerProvider), nil
+					}
+					return capResults(results, 5), nil
 				}
 			}
 		}
@@ -843,7 +925,7 @@ func (s *GalleryMetadataService) searchMPLStudiosFallback(ctx context.Context, q
 		})
 
 		if len(results) > 0 {
-			return results, nil
+			return capResults(results, maxResultsPerProvider), nil
 		}
 	}
 
@@ -1282,4 +1364,55 @@ func absInt(x int) int {
 		return -x
 	}
 	return x
+}
+
+// capResults returns at most n results from the slice.
+func capResults(results []GallerySearchResult, n int) []GallerySearchResult {
+	if len(results) <= n {
+		return results
+	}
+	return results[:n]
+}
+
+// filterByTitleRelevance keeps only results whose title shares at least one
+// significant word (3+ chars) with the query. This prevents returning every
+// gallery from a person page when searching for a specific gallery name.
+func filterByTitleRelevance(results []GallerySearchResult, query string) []GallerySearchResult {
+	queryWords := significantWords(query)
+	if len(queryWords) == 0 {
+		return results
+	}
+
+	var filtered []GallerySearchResult
+	for _, r := range results {
+		titleWords := significantWords(r.Title)
+		for _, qw := range queryWords {
+			for _, tw := range titleWords {
+				if strings.EqualFold(qw, tw) {
+					filtered = append(filtered, r)
+					goto next
+				}
+			}
+		}
+	next:
+	}
+	return filtered
+}
+
+// significantWords splits s into lowercase words of 3+ characters, filtering
+// out common noise words.
+func significantWords(s string) []string {
+	noise := map[string]bool{
+		"the": true, "and": true, "for": true, "with": true, "from": true,
+		"that": true, "this": true, "are": true, "was": true, "has": true,
+	}
+	var words []string
+	for _, w := range strings.Fields(strings.ToLower(s)) {
+		// Strip non-alphanumeric edges.
+		w = strings.TrimFunc(w, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+		if len(w) >= 3 && !noise[w] {
+			words = append(words, w)
+		}
+	}
+	return words
 }
