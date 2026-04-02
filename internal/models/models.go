@@ -16,15 +16,20 @@ type Source struct {
 
 // Gallery represents a collection of images from a single source post or provider page.
 type Gallery struct {
-	ID                 int64     `db:"id"                    json:"id"`
-	SourceID           *int64    `db:"source_id"             json:"source_id,omitempty"`
-	Provider           *string   `db:"provider"              json:"provider,omitempty"`
-	ProviderGalleryID  *string   `db:"provider_gallery_id"   json:"provider_gallery_id,omitempty"`
-	Title              *string   `db:"title"                 json:"title,omitempty"`
-	URL                *string   `db:"url"                   json:"url,omitempty"`
-	ThumbnailURL       *string   `db:"thumbnail_url"         json:"thumbnail_url,omitempty"`
-	LocalThumbnailPath *string   `db:"local_thumbnail_path"  json:"local_thumbnail_path,omitempty"`
-	CreatedAt          time.Time `db:"created_at"            json:"created_at"`
+	ID                   int64     `db:"id"                      json:"id"`
+	SourceID             *int64    `db:"source_id"               json:"source_id,omitempty"`
+	Provider             *string   `db:"provider"                json:"provider,omitempty"`
+	ProviderGalleryID    *string   `db:"provider_gallery_id"     json:"provider_gallery_id,omitempty"`
+	Title                *string   `db:"title"                   json:"title,omitempty"`
+	URL                  *string   `db:"url"                     json:"url,omitempty"`
+	ThumbnailURL         *string   `db:"thumbnail_url"           json:"thumbnail_url,omitempty"`
+	LocalThumbnailPath   *string   `db:"local_thumbnail_path"    json:"local_thumbnail_path,omitempty"`
+	Description          *string   `db:"description"             json:"description,omitempty"`
+	Rating               *float64  `db:"rating"                  json:"rating,omitempty"`
+	ReleaseDate          *string   `db:"release_date"            json:"release_date,omitempty"`
+	SourceURL            *string   `db:"source_url"              json:"source_url,omitempty"`
+	ProviderThumbnailURL *string   `db:"provider_thumbnail_url"  json:"provider_thumbnail_url,omitempty"`
+	CreatedAt            time.Time `db:"created_at"              json:"created_at"`
 }
 
 // Image represents a single downloaded image or video file.

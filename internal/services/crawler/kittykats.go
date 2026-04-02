@@ -36,9 +36,11 @@ func (k *KittyKats) Hosts() []string {
 }
 
 // Parse implements SourceParser.
-func (k *KittyKats) Parse(_ context.Context, body, _ string) (map[string][]ImageLink, error) {
+// If postID is non-empty, only that specific post is processed.
+// If postID is empty, only the first post is processed.
+func (k *KittyKats) Parse(_ context.Context, body, _ string, postID string) (map[string][]ImageLink, error) {
 	// Try XenForo-style bbWrapper first.
-	galleries, err := parseForumPosts(body, kkXFPostRe, kkTitleRe, kkImgLinkRe, kkLinkRe)
+	galleries, err := parseForumPosts(body, kkXFPostRe, kkTitleRe, kkImgLinkRe, kkLinkRe, postID)
 	if err != nil {
 		return nil, err
 	}
@@ -47,5 +49,5 @@ func (k *KittyKats) Parse(_ context.Context, body, _ string) (map[string][]Image
 	}
 
 	// Fall back to vBulletin-style.
-	return parseForumPosts(body, kkPostRe, kkTitleRe, kkImgLinkRe, kkLinkRe)
+	return parseForumPosts(body, kkPostRe, kkTitleRe, kkImgLinkRe, kkLinkRe, postID)
 }

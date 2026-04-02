@@ -93,7 +93,10 @@ func main() {
 
 	autoLinker := linker.New(db)
 
-	router := buildRouter(db, crawlerSvc, queueMgr, autoLinker, enricher, cfg.Storage, wsHub)
+	// Gallery metadata service — uses VPN-aware client for age-gated provider APIs.
+	metadataSvc := providers.NewGalleryMetadataService(vpnSvc.GetHTTPClient, cfg.Crawler.UserAgent)
+
+	router := buildRouter(db, crawlerSvc, queueMgr, autoLinker, enricher, cfg.Storage, wsHub, metadataSvc)
 
 	srv := &http.Server{
 		Addr:         cfg.Addr(),
@@ -131,7 +134,7 @@ func main() {
 }
 
 // buildRouter wires up all routes and returns the configured gin.Engine.
-func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.Manager, al *linker.AutoLinker, enricher *providers.Enricher, storage config.StorageConfig, wsHub *ws.Hub) *gin.Engine {
+func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.Manager, al *linker.AutoLinker, enricher *providers.Enricher, storage config.StorageConfig, wsHub *ws.Hub, metadataSvc *providers.GalleryMetadataService) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.New()
@@ -142,7 +145,7 @@ func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.M
 	v1 := r.Group("/api/v1")
 
 	handlers.NewSourceHandler(db, crawlerSvc).RegisterRoutes(v1.Group("/sources"))
-	handlers.NewGalleryHandler(db, storage).RegisterRoutes(v1.Group("/galleries"))
+	handlers.NewGalleryHandler(db, storage, metadataSvc).RegisterRoutes(v1.Group("/galleries"))
 	handlers.NewImageHandler(db, storage).RegisterRoutes(v1.Group("/images"))
 	handlers.NewVideoHandler(db).RegisterRoutes(v1.Group("/videos"))
 	handlers.NewPeopleHandler(db, al, enricher).RegisterRoutes(v1.Group("/people"))

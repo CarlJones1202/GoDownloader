@@ -35,19 +35,39 @@ func (v *ViperGirls) Hosts() []string {
 }
 
 // Parse implements SourceParser.
-func (v *ViperGirls) Parse(_ context.Context, body, _ string) (map[string][]ImageLink, error) {
-	return parseForumPosts(body, vgPostRe, vgTitleRe, vgImgLinkRe, vgLinkRe)
+// If postID is non-empty, only that specific post is processed.
+// If postID is empty, only the first post is processed.
+func (v *ViperGirls) Parse(_ context.Context, body, _ string, postID string) (map[string][]ImageLink, error) {
+	return parseForumPosts(body, vgPostRe, vgTitleRe, vgImgLinkRe, vgLinkRe, postID)
 }
 
 // parseForumPosts is a shared parser for vBulletin-style forums.
 // It extracts posts, optional titles, and image host links.
-// imgLinkRe is the primary regex that captures both href and img src.
-// linkRe is the fallback that captures only href.
-func parseForumPosts(body string, postRe, titleRe, imgLinkRe, linkRe *regexp.Regexp) (map[string][]ImageLink, error) {
+// If postID is non-empty, only that specific post is processed.
+// If postID is empty, only the first post is processed.
+func parseForumPosts(body string, postRe, titleRe, imgLinkRe, linkRe *regexp.Regexp, postID string) (map[string][]ImageLink, error) {
 	galleries := make(map[string][]ImageLink)
 
-	posts := postRe.FindAllStringSubmatch(body, -1)
-	for i, pm := range posts {
+	var postRegex *regexp.Regexp
+	if postID != "" {
+		// Match specific post by ID
+		postRegex = regexp.MustCompile(`(?s)<div[^>]+id="post_message_` + postID + `"[^>]*>(.*?)</div>`)
+	} else {
+		// Match first post only - use a non-greedy match that stops at first post
+		postRegex = regexp.MustCompile(`(?s)<div[^>]+id="post_message_\d+"[^>]*>(.*?)</div>`)
+	}
+
+	posts := postRegex.FindAllStringSubmatch(body, -1)
+
+	// If filtering by specific postID, we expect at most 1 result
+	// If getting first post, we take only the first match
+	maxPosts := 1
+	if postID != "" {
+		maxPosts = 1 // could be 0 if post not found
+	}
+
+	for i := 0; i < len(posts) && i < maxPosts; i++ {
+		pm := posts[i]
 		if len(pm) < 2 {
 			continue
 		}
@@ -59,7 +79,7 @@ func parseForumPosts(body string, postRe, titleRe, imgLinkRe, linkRe *regexp.Reg
 			title = strings.TrimSpace(tm[1])
 		}
 		if title == "" {
-			title = "Untitled " + itoa(i+1)
+			title = "Untitled"
 		}
 
 		// First pass: try to extract <a href><img src> pairs.

@@ -57,6 +57,9 @@ func main() {
 
 	slog.Info("found images", "count", len(images))
 
+	// Build a map of old filename -> new filename for gallery thumbnail updates
+	filenameMap := make(map[string]string)
+
 	processed := 0
 	renamed := 0
 	skipped := 0
@@ -143,6 +146,9 @@ func main() {
 			}
 		}
 
+		// Store mapping for gallery thumbnail updates
+		filenameMap[oldFilename] = newFilename
+
 		// Update database
 		if !*dryRun {
 			if err := db.UpdateImageFilename(ctx, img.ID, newFilename); err != nil {
@@ -158,12 +164,72 @@ func main() {
 		}
 	}
 
-	slog.Info("migration complete",
+	slog.Info("migration complete (images)",
 		"total", len(images),
 		"processed", processed,
 		"renamed", renamed,
 		"skipped", skipped,
 		"errors", errors,
+	)
+
+	// ---------------------------------------------------------------------
+	// Migrate gallery thumbnails (local_thumbnail_path in galleries table)
+	// ---------------------------------------------------------------------
+	slog.Info("migrating gallery thumbnails...")
+
+	galleries, err := db.ListGalleries(ctx, database.GalleryFilter{Limit: -1})
+	if err != nil {
+		slog.Error("listing galleries", "error", err)
+		os.Exit(1)
+	}
+
+	galleryThumbsUpdated := 0
+	for _, g := range galleries {
+		if g.LocalThumbnailPath == nil || *g.LocalThumbnailPath == "" {
+			continue
+		}
+
+		oldThumbPath := *g.LocalThumbnailPath
+
+		// Find the corresponding image filename
+		// The local_thumbnail_path is like "imagename_thumb.jpg"
+		// We need to find the original image filename and map it
+		var oldImageFilename string
+		for oldImg, _ := range filenameMap {
+			if thumbnailName(oldImg) == oldThumbPath {
+				oldImageFilename = oldImg
+				break
+			}
+		}
+
+		if oldImageFilename == "" {
+			slog.Debug("gallery thumbnail not from known images", "gallery_id", g.ID, "thumb", oldThumbPath)
+			continue
+		}
+
+		newImageFilename := filenameMap[oldImageFilename]
+		if newImageFilename == "" {
+			slog.Warn("no new filename mapping found", "gallery_id", g.ID, "old_image", oldImageFilename)
+			continue
+		}
+
+		newThumbPath := thumbnailName(newImageFilename)
+
+		// Update gallery thumbnail path in database
+		if !*dryRun {
+			if err := db.SetGalleryThumbnail(ctx, g.ID, newThumbPath); err != nil {
+				slog.Error("updating gallery thumbnail", "gallery_id", g.ID, "error", err)
+				continue
+			}
+		} else {
+			slog.Info("DRY RUN: would update gallery thumbnail", "gallery_id", g.ID, "from", oldThumbPath, "to", newThumbPath)
+		}
+		galleryThumbsUpdated++
+	}
+
+	slog.Info("migration complete",
+		"total_galleries", len(galleries),
+		"gallery_thumbnails_updated", galleryThumbsUpdated,
 	)
 
 	if *dryRun {

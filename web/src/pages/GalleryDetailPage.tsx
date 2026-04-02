@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { galleries, images as imagesApi } from '@/lib/api';
@@ -15,7 +15,21 @@ import {
 import { JustifiedGrid } from '@/components/JustifiedGrid';
 import type { JustifiedItem } from '@/components/JustifiedGrid';
 import { Lightbox } from '@/components/Lightbox';
-import { Heart, ArrowLeft, Trash2, Edit2, Save, X } from 'lucide-react';
+import type { GallerySearchResult } from '@/types';
+import {
+  Heart,
+  ArrowLeft,
+  Trash2,
+  Edit2,
+  Save,
+  X,
+  Search,
+  Star,
+  Calendar,
+  ExternalLink,
+  FileText,
+  Loader2,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function GalleryDetailPage() {
@@ -29,6 +43,13 @@ export function GalleryDetailPage() {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
+
+  // Metadata search state
+  const [showMetadataSearch, setShowMetadataSearch] = useState(false);
+  const [metadataQuery, setMetadataQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<GallerySearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [scrapingUrl, setScrapingUrl] = useState<string | null>(null);
 
   const { data: gallery, isLoading: loadingGallery } = useQuery({
     queryKey: ['gallery', galleryId],
@@ -84,6 +105,46 @@ export function GalleryDetailPage() {
       setConfirmDeleteImageId(null);
     },
   });
+
+  // Metadata search
+  const openMetadataSearch = useCallback(() => {
+    setMetadataQuery(gallery?.title || '');
+    setSearchResults([]);
+    setShowMetadataSearch(true);
+  }, [gallery?.title]);
+
+  const runMetadataSearch = useCallback(async () => {
+    if (!metadataQuery.trim()) return;
+    setIsSearching(true);
+    try {
+      const results = await galleries.searchMetadata(galleryId, metadataQuery.trim());
+      setSearchResults(results);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  }, [galleryId, metadataQuery]);
+
+  const applyMetadata = useCallback(
+    async (result: GallerySearchResult) => {
+      setScrapingUrl(result.url);
+      try {
+        await galleries.scrapeMetadata(galleryId, {
+          provider: result.provider,
+          url: result.url,
+          source_id: result.source_id,
+        });
+        queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
+        setShowMetadataSearch(false);
+      } catch (err) {
+        console.error('Failed to apply metadata:', err);
+      } finally {
+        setScrapingUrl(null);
+      }
+    },
+    [galleryId, queryClient],
+  );
 
   // Build justified grid items from image list.
   const gridItems: JustifiedItem[] = useMemo(() => {
@@ -154,6 +215,8 @@ export function GalleryDetailPage() {
   if (loadingGallery) return <Spinner />;
   if (!gallery) return <EmptyState message="Gallery not found." />;
 
+  const hasMetadata = gallery.description || gallery.rating || gallery.release_date || gallery.source_url;
+
   return (
     <>
       <div className="mb-4">
@@ -193,6 +256,9 @@ export function GalleryDetailPage() {
             <Edit2 size={14} /> Edit
           </Button>
         )}
+        <Button variant="secondary" size="sm" onClick={openMetadataSearch}>
+          <Search size={14} /> Metadata
+        </Button>
         {gallery.provider && <Badge>{gallery.provider}</Badge>}
         <Button
           variant="danger"
@@ -203,17 +269,62 @@ export function GalleryDetailPage() {
         </Button>
       </PageHeader>
 
-      <div className="text-xs text-zinc-500 mb-6 space-y-1">
-        {gallery.url && (
-          <p>
-            URL:{' '}
-            <a href={gallery.url} target="_blank" className="text-blue-400 hover:underline">
-              {gallery.url}
-            </a>
-          </p>
+      {/* Gallery info + metadata panel */}
+      <div className="text-xs text-zinc-500 mb-6 space-y-2">
+        <div className="space-y-1">
+          {gallery.url && (
+            <p>
+              URL:{' '}
+              <a href={gallery.url} target="_blank" className="text-blue-400 hover:underline">
+                {gallery.url}
+              </a>
+            </p>
+          )}
+          <p>Created: {formatDate(gallery.created_at)}</p>
+          {imageList && <p>{imageList.length} images</p>}
+        </div>
+
+        {/* Metadata display */}
+        {hasMetadata && (
+          <div className="border border-zinc-700 rounded-lg p-4 bg-zinc-800/50 space-y-3">
+            <div className="flex items-center gap-2 text-zinc-300 text-sm font-medium">
+              <FileText size={14} />
+              Gallery Metadata
+            </div>
+
+            {gallery.description && (
+              <p className="text-zinc-300 text-sm leading-relaxed">{gallery.description}</p>
+            )}
+
+            <div className="flex flex-wrap items-center gap-4 text-zinc-400">
+              {gallery.rating != null && gallery.rating > 0 && (
+                <span className="inline-flex items-center gap-1">
+                  <Star size={12} className="text-amber-400" />
+                  {gallery.rating.toFixed(1)}
+                </span>
+              )}
+
+              {gallery.release_date && (
+                <span className="inline-flex items-center gap-1">
+                  <Calendar size={12} />
+                  {gallery.release_date}
+                </span>
+              )}
+
+              {gallery.source_url && (
+                <a
+                  href={gallery.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-blue-400 hover:underline"
+                >
+                  <ExternalLink size={12} />
+                  Source
+                </a>
+              )}
+            </div>
+          </div>
         )}
-        <p>Created: {formatDate(gallery.created_at)}</p>
-        {imageList && <p>{imageList.length} images</p>}
       </div>
 
       {/* Images grid */}
@@ -238,6 +349,110 @@ export function GalleryDetailPage() {
           onClose={() => setLightboxIndex(null)}
           onIndexChange={setLightboxIndex}
         />
+      )}
+
+      {/* Metadata search modal */}
+      {showMetadataSearch && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 bg-black/70">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+              <h2 className="text-lg font-semibold text-zinc-100">Search Gallery Metadata</h2>
+              <button
+                onClick={() => setShowMetadataSearch(false)}
+                className="p-1 text-zinc-400 hover:text-zinc-200"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Search bar */}
+            <div className="p-4 border-b border-zinc-800">
+              <div className="flex gap-2">
+                <Input
+                  value={metadataQuery}
+                  onChange={(e) => setMetadataQuery(e.target.value)}
+                  placeholder="Search by gallery title..."
+                  className="flex-1"
+                  autoFocus
+                  onKeyDown={(e) => e.key === 'Enter' && runMetadataSearch()}
+                />
+                <Button onClick={runMetadataSearch} disabled={isSearching || !metadataQuery.trim()}>
+                  {isSearching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                  Search
+                </Button>
+              </div>
+              <p className="text-xs text-zinc-500 mt-2">
+                Searches 12 providers: MetArt, MetArtX, SexArt, LifeErotic, EternalDesire, RylskyArt, Playboy, PlayboyPlus, Vixen, VivThomas, WowGirls, MPLStudios
+              </p>
+            </div>
+
+            {/* Results */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {isSearching ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 size={24} className="animate-spin text-zinc-400" />
+                  <span className="ml-2 text-zinc-400">Searching providers...</span>
+                </div>
+              ) : searchResults.length === 0 ? (
+                <div className="text-center py-12 text-zinc-500">
+                  {metadataQuery ? 'No results. Try a different search term.' : 'Enter a search term to find matching galleries.'}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-zinc-500 mb-3">{searchResults.length} results found</p>
+                  {searchResults.map((result, i) => (
+                    <button
+                      key={`${result.provider}-${result.url}-${i}`}
+                      onClick={() => applyMetadata(result)}
+                      disabled={scrapingUrl !== null}
+                      className={cn(
+                        'w-full flex items-start gap-3 p-3 rounded-lg border border-zinc-700 hover:border-zinc-500 hover:bg-zinc-800/80 transition-colors text-left',
+                        scrapingUrl === result.url && 'border-blue-500 bg-blue-500/10',
+                      )}
+                    >
+                      {/* Thumbnail */}
+                      {result.thumbnail ? (
+                        <img
+                          src={result.thumbnail}
+                          alt=""
+                          className="w-16 h-16 object-cover rounded flex-shrink-0"
+                          loading="lazy"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="w-16 h-16 bg-zinc-800 rounded flex-shrink-0 flex items-center justify-center">
+                          <FileText size={20} className="text-zinc-600" />
+                        </div>
+                      )}
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge>{result.provider}</Badge>
+                          <span className="text-sm text-zinc-200 truncate">{result.title}</span>
+                        </div>
+                        {result.release_date && (
+                          <span className="text-xs text-zinc-500 inline-flex items-center gap-1">
+                            <Calendar size={10} />
+                            {result.release_date}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Loading indicator for this specific result */}
+                      {scrapingUrl === result.url && (
+                        <Loader2 size={16} className="animate-spin text-blue-400 flex-shrink-0 mt-1" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Confirm dialogs */}

@@ -6,6 +6,7 @@ import type {
   DownloadQueue,
   EnrichResult,
   Gallery,
+  GallerySearchResult,
   IdentifyRequest,
   Image,
   PaginationParams,
@@ -76,6 +77,10 @@ export const galleries = {
   update: (id: number, data: Partial<Gallery>) =>
     request<Gallery>(`/galleries/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: number) => request<void>(`/galleries/${id}`, { method: 'DELETE' }),
+  searchMetadata: (id: number, query: string) =>
+    request<GallerySearchResult[]>(`/galleries/${id}/search-metadata${qs({ query })}`),
+  scrapeMetadata: (id: number, data: { provider: string; url: string; source_id?: string }) =>
+    request<Gallery>(`/galleries/${id}/scrape-metadata`, { method: 'POST', body: JSON.stringify(data) }),
 };
 
 // ---------- Images ----------

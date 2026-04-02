@@ -30,7 +30,7 @@ type DB struct {
 // the connection pool, enables WAL mode and foreign keys, and runs all
 // pending migrations.
 func Open(cfg config.DatabaseConfig) (*DB, error) {
-	dsn := fmt.Sprintf("%s?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000", cfg.Path)
+	dsn := fmt.Sprintf("%s?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=30000", cfg.Path)
 
 	sqlxDB, err := sqlx.Open("sqlite", dsn)
 	if err != nil {

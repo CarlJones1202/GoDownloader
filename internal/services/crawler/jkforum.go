@@ -36,9 +36,11 @@ func (j *JKForum) Hosts() []string {
 }
 
 // Parse implements SourceParser.
-func (j *JKForum) Parse(_ context.Context, body, _ string) (map[string][]ImageLink, error) {
+// If postID is non-empty, only that specific post is processed.
+// If postID is empty, only the first post is processed.
+func (j *JKForum) Parse(_ context.Context, body, _ string, postID string) (map[string][]ImageLink, error) {
 	// Try vBulletin-style first.
-	galleries, err := parseForumPosts(body, jkPostRe, jkTitleRe, jkImgLinkRe, jkLinkRe)
+	galleries, err := parseForumPosts(body, jkPostRe, jkTitleRe, jkImgLinkRe, jkLinkRe, postID)
 	if err != nil {
 		return nil, err
 	}
@@ -47,5 +49,5 @@ func (j *JKForum) Parse(_ context.Context, body, _ string) (map[string][]ImageLi
 	}
 
 	// Fall back to Nuxt-style article containers.
-	return parseForumPosts(body, jkArticleRe, jkTitleRe, jkImgLinkRe, jkLinkRe)
+	return parseForumPosts(body, jkArticleRe, jkTitleRe, jkImgLinkRe, jkLinkRe, postID)
 }

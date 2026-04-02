@@ -12,15 +12,20 @@ CREATE TABLE IF NOT EXISTS sources (
 );
 
 CREATE TABLE IF NOT EXISTS galleries (
-    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_id            INTEGER REFERENCES sources(id) ON DELETE SET NULL,
-    provider             TEXT,
-    provider_gallery_id  TEXT,
-    title                TEXT,
-    url                  TEXT,
-    thumbnail_url        TEXT,
-    local_thumbnail_path TEXT,
-    created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id              INTEGER REFERENCES sources(id) ON DELETE SET NULL,
+    provider               TEXT,
+    provider_gallery_id    TEXT,
+    title                  TEXT,
+    url                    TEXT,
+    thumbnail_url          TEXT,
+    local_thumbnail_path   TEXT,
+    description            TEXT,
+    rating                 REAL,
+    release_date           TEXT,
+    source_url             TEXT,
+    provider_thumbnail_url TEXT,
+    created_at             DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS images (

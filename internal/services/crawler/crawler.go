@@ -34,10 +34,11 @@ type SourceParser interface {
 	// Hosts returns URL host patterns this parser handles,
 	// e.g. []string{"vipergirls.to", "www.vipergirls.to"}.
 	Hosts() []string
-	// Parse receives the page HTML and returns the discovered image links
-	// grouped by gallery title. The map key is the gallery title (or "" for
-	// ungrouped images).
-	Parse(ctx context.Context, body, pageURL string) (map[string][]ImageLink, error)
+	// Parse receives the page HTML, page URL, and optional post ID filter.
+	// If postID is non-empty, only that specific post is processed.
+	// If postID is empty, only the first post is processed.
+	// Returns discovered image links grouped by gallery title.
+	Parse(ctx context.Context, body, pageURL, postID string) (map[string][]ImageLink, error)
 }
 
 // job represents a single crawl request.
@@ -249,6 +250,10 @@ func (c *Crawler) process(j job) {
 		return
 	}
 
+	// Extract post ID filter from URL fragment (#postXXX) or query param (?p=XXX).
+	// If empty, the parser will process only the first post.
+	postIDFilter := extractPostID(src.URL)
+
 	// Fetch the page.
 	body, err := c.fetchPage(ctx, src.URL)
 	if err != nil {
@@ -259,8 +264,8 @@ func (c *Crawler) process(j job) {
 		return
 	}
 
-	// Parse galleries from the page HTML.
-	galleries, err := parser.Parse(ctx, body, src.URL)
+	// Parse galleries from the page HTML with optional post filter.
+	galleries, err := parser.Parse(ctx, body, src.URL, postIDFilter)
 	if err != nil {
 		slog.Error("crawler: parsing source page",
 			"error", err,
@@ -395,4 +400,27 @@ func (c *Crawler) ensureGallery(ctx context.Context, sourceID int64, title, sour
 		return 0, fmt.Errorf("creating gallery: %w", err)
 	}
 	return g.ID, nil
+}
+
+// extractPostID extracts a post ID from a URL fragment (#postXXX) or query param (?p=XXX).
+// Fragment takes precedence over query param.
+// Returns empty string if neither is present.
+func extractPostID(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+
+	// Try fragment first: #post66829071 -> 66829071
+	fragment := strings.TrimPrefix(u.Fragment, "post")
+	if fragment != "" && u.Fragment != "" {
+		return fragment
+	}
+
+	// Fallback to query param: ?p=66829071
+	if p := u.Query().Get("p"); p != "" {
+		return p
+	}
+
+	return ""
 }

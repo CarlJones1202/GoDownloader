@@ -165,7 +165,9 @@ func (db *DB) ListPersonGalleries(ctx context.Context, personID int64, limit, of
 	galleries := []models.Gallery{}
 	err := db.SelectContext(ctx, &galleries,
 		`SELECT g.id, g.source_id, g.provider, g.provider_gallery_id, g.title,
-		        g.url, g.thumbnail_url, g.local_thumbnail_path, g.created_at
+		        g.url, g.thumbnail_url, g.local_thumbnail_path, g.description,
+		        g.rating, g.release_date, g.source_url, g.provider_thumbnail_url,
+		        g.created_at
 		   FROM galleries g
 		   JOIN gallery_persons gp ON gp.gallery_id = g.id
 		  WHERE gp.person_id = ?

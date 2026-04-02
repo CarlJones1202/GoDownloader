@@ -19,6 +19,11 @@ export interface Gallery {
   url?: string;
   thumbnail_url?: string;
   local_thumbnail_path?: string;
+  description?: string;
+  rating?: number;
+  release_date?: string;
+  source_url?: string;
+  provider_thumbnail_url?: string;
   created_at: string;
 }
 
@@ -149,4 +154,22 @@ export interface IdentifyRequest {
 export interface PaginationParams {
   limit?: number;
   offset?: number;
+}
+
+export interface GallerySearchResult {
+  provider: string;
+  title: string;
+  url: string;
+  thumbnail: string;
+  release_date?: string;
+  source_id?: string;
+}
+
+export interface GalleryMetadata {
+  provider: string;
+  description: string;
+  rating: number;
+  release_date: string;
+  source_url: string;
+  thumbnail_url: string;
 }

@@ -10,18 +10,20 @@ import (
 	"github.com/carlj/godownload/internal/config"
 	"github.com/carlj/godownload/internal/database"
 	"github.com/carlj/godownload/internal/models"
+	"github.com/carlj/godownload/internal/services/providers"
 	"github.com/gin-gonic/gin"
 )
 
 // GalleryHandler handles HTTP requests for the /api/v1/galleries resource.
 type GalleryHandler struct {
-	db      *database.DB
-	storage config.StorageConfig
+	db          *database.DB
+	storage     config.StorageConfig
+	metadataSvc *providers.GalleryMetadataService
 }
 
 // NewGalleryHandler creates a GalleryHandler.
-func NewGalleryHandler(db *database.DB, storage config.StorageConfig) *GalleryHandler {
-	return &GalleryHandler{db: db, storage: storage}
+func NewGalleryHandler(db *database.DB, storage config.StorageConfig, metadataSvc *providers.GalleryMetadataService) *GalleryHandler {
+	return &GalleryHandler{db: db, storage: storage, metadataSvc: metadataSvc}
 }
 
 // RegisterRoutes registers all gallery routes on the given group.
@@ -33,6 +35,8 @@ func (h *GalleryHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.DELETE("/:id", h.delete)
 	rg.POST("/:id/images", h.addImage)
 	rg.GET("/:id/people", h.listPeople)
+	rg.GET("/:id/search-metadata", h.searchMetadata)
+	rg.POST("/:id/scrape-metadata", h.scrapeMetadata)
 }
 
 type createGalleryRequest struct {
@@ -45,13 +49,18 @@ type createGalleryRequest struct {
 }
 
 type updateGalleryRequest struct {
-	SourceID           *int64  `json:"source_id"`
-	Provider           *string `json:"provider"`
-	ProviderGalleryID  *string `json:"provider_gallery_id"`
-	Title              *string `json:"title"`
-	URL                *string `json:"url"`
-	ThumbnailURL       *string `json:"thumbnail_url"`
-	LocalThumbnailPath *string `json:"local_thumbnail_path"`
+	SourceID             *int64   `json:"source_id"`
+	Provider             *string  `json:"provider"`
+	ProviderGalleryID    *string  `json:"provider_gallery_id"`
+	Title                *string  `json:"title"`
+	URL                  *string  `json:"url"`
+	ThumbnailURL         *string  `json:"thumbnail_url"`
+	LocalThumbnailPath   *string  `json:"local_thumbnail_path"`
+	Description          *string  `json:"description"`
+	Rating               *float64 `json:"rating"`
+	ReleaseDate          *string  `json:"release_date"`
+	SourceURL            *string  `json:"source_url"`
+	ProviderThumbnailURL *string  `json:"provider_thumbnail_url"`
 }
 
 type addImageToGalleryRequest struct {
@@ -161,6 +170,21 @@ func (h *GalleryHandler) update(c *gin.Context) {
 	}
 	if req.LocalThumbnailPath != nil {
 		g.LocalThumbnailPath = req.LocalThumbnailPath
+	}
+	if req.Description != nil {
+		g.Description = req.Description
+	}
+	if req.Rating != nil {
+		g.Rating = req.Rating
+	}
+	if req.ReleaseDate != nil {
+		g.ReleaseDate = req.ReleaseDate
+	}
+	if req.SourceURL != nil {
+		g.SourceURL = req.SourceURL
+	}
+	if req.ProviderThumbnailURL != nil {
+		g.ProviderThumbnailURL = req.ProviderThumbnailURL
 	}
 
 	if err := h.db.UpdateGallery(c.Request.Context(), g); err != nil {
@@ -279,4 +303,106 @@ func strToInt64(s string) (int64, bool) {
 		n = n*10 + int64(ch-'0')
 	}
 	return n, len(s) > 0
+}
+
+// searchMetadata searches all gallery metadata providers for matching galleries.
+// GET /api/v1/galleries/:id/search-metadata?query=...
+func (h *GalleryHandler) searchMetadata(c *gin.Context) {
+	id, ok := parseIDParam(c)
+	if !ok {
+		return
+	}
+
+	// Verify gallery exists.
+	gallery, err := h.db.GetGallery(c.Request.Context(), id)
+	if err != nil {
+		handleDBError(c, err)
+		return
+	}
+
+	query := c.Query("query")
+	if query == "" {
+		// Default to the gallery title if no query provided.
+		if gallery.Title != nil && *gallery.Title != "" {
+			query = *gallery.Title
+		} else {
+			respondError(c, http.StatusBadRequest, "query parameter is required when gallery has no title")
+			return
+		}
+	}
+
+	results, err := h.metadataSvc.SearchAll(c.Request.Context(), query)
+	if err != nil {
+		slog.Debug("gallery metadata search returned no results", "gallery_id", id, "query", query, "error", err)
+		// Return empty array instead of error — no results is not an error for the UI.
+		respondOK(c, []providers.GallerySearchResult{})
+		return
+	}
+
+	respondOK(c, results)
+}
+
+// scrapeMetadataRequest is the JSON body for the scrape-metadata endpoint.
+type scrapeMetadataRequest struct {
+	Provider string `json:"provider"  binding:"required"`
+	URL      string `json:"url"       binding:"required"`
+	SourceID string `json:"source_id"`
+}
+
+// scrapeMetadata scrapes full metadata from a specific provider URL and applies
+// it to the gallery.
+// POST /api/v1/galleries/:id/scrape-metadata
+func (h *GalleryHandler) scrapeMetadata(c *gin.Context) {
+	id, ok := parseIDParam(c)
+	if !ok {
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// Verify gallery exists.
+	gallery, err := h.db.GetGallery(ctx, id)
+	if err != nil {
+		handleDBError(c, err)
+		return
+	}
+
+	var req scrapeMetadataRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	meta, err := h.metadataSvc.ScrapeMetadata(ctx, req.URL, req.Provider, req.SourceID)
+	if err != nil {
+		slog.Warn("gallery metadata scrape failed", "gallery_id", id, "provider", req.Provider, "url", req.URL, "error", err)
+		respondError(c, http.StatusBadGateway, "failed to scrape metadata: "+err.Error())
+		return
+	}
+
+	// Apply scraped metadata to gallery.
+	if meta.Description != "" {
+		gallery.Description = &meta.Description
+	}
+	if meta.Rating > 0 {
+		gallery.Rating = &meta.Rating
+	}
+	if !meta.ReleaseDate.IsZero() {
+		d := meta.ReleaseDate.Format("2006-01-02")
+		gallery.ReleaseDate = &d
+	}
+	if meta.SourceURL != "" {
+		gallery.SourceURL = &meta.SourceURL
+	}
+	if meta.ThumbnailURL != "" {
+		gallery.ProviderThumbnailURL = &meta.ThumbnailURL
+	}
+
+	if err := h.db.UpdateGallery(ctx, gallery); err != nil {
+		handleDBError(c, err)
+		return
+	}
+
+	slog.Info("gallery metadata applied", "gallery_id", id, "provider", req.Provider)
+	respondOK(c, gallery)
 }

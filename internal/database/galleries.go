@@ -20,12 +20,16 @@ type GalleryFilter struct {
 
 // ListGalleries returns a paginated list of galleries.
 func (db *DB) ListGalleries(ctx context.Context, f GalleryFilter) ([]models.Gallery, error) {
-	if f.Limit <= 0 {
+	// Use Limit = -1 to get all galleries (no pagination)
+	if f.Limit < 0 {
+		f.Limit = 1000000 // arbitrarily large, will fit in memory
+	} else if f.Limit == 0 {
 		f.Limit = 50
 	}
 
 	query := `SELECT id, source_id, provider, provider_gallery_id, title, url,
-	                 thumbnail_url, local_thumbnail_path, created_at
+	                 thumbnail_url, local_thumbnail_path, description, rating,
+	                 release_date, source_url, provider_thumbnail_url, created_at
 	            FROM galleries WHERE 1=1`
 	args := []any{}
 
@@ -57,7 +61,8 @@ func (db *DB) GetGallery(ctx context.Context, id int64) (*models.Gallery, error)
 	var g models.Gallery
 	err := db.GetContext(ctx, &g,
 		`SELECT id, source_id, provider, provider_gallery_id, title, url,
-		        thumbnail_url, local_thumbnail_path, created_at
+		        thumbnail_url, local_thumbnail_path, description, rating,
+		        release_date, source_url, provider_thumbnail_url, created_at
 		   FROM galleries WHERE id = ?`, id,
 	)
 	if err != nil {
@@ -72,9 +77,13 @@ func (db *DB) GetGallery(ctx context.Context, id int64) (*models.Gallery, error)
 // CreateGallery inserts a new gallery and populates the ID and CreatedAt.
 func (db *DB) CreateGallery(ctx context.Context, g *models.Gallery) error {
 	result, err := db.ExecContext(ctx,
-		`INSERT INTO galleries (source_id, provider, provider_gallery_id, title, url, thumbnail_url, local_thumbnail_path)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		g.SourceID, g.Provider, g.ProviderGalleryID, g.Title, g.URL, g.ThumbnailURL, g.LocalThumbnailPath,
+		`INSERT INTO galleries (source_id, provider, provider_gallery_id, title, url,
+		                        thumbnail_url, local_thumbnail_path, description, rating,
+		                        release_date, source_url, provider_thumbnail_url)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		g.SourceID, g.Provider, g.ProviderGalleryID, g.Title, g.URL,
+		g.ThumbnailURL, g.LocalThumbnailPath, g.Description, g.Rating,
+		g.ReleaseDate, g.SourceURL, g.ProviderThumbnailURL,
 	)
 	if err != nil {
 		return fmt.Errorf("creating gallery: %w", err)
@@ -93,10 +102,14 @@ func (db *DB) UpdateGallery(ctx context.Context, g *models.Gallery) error {
 	_, err := db.ExecContext(ctx,
 		`UPDATE galleries
 		    SET source_id = ?, provider = ?, provider_gallery_id = ?,
-		        title = ?, url = ?, thumbnail_url = ?, local_thumbnail_path = ?
+		        title = ?, url = ?, thumbnail_url = ?, local_thumbnail_path = ?,
+		        description = ?, rating = ?, release_date = ?,
+		        source_url = ?, provider_thumbnail_url = ?
 		  WHERE id = ?`,
 		g.SourceID, g.Provider, g.ProviderGalleryID,
-		g.Title, g.URL, g.ThumbnailURL, g.LocalThumbnailPath, g.ID,
+		g.Title, g.URL, g.ThumbnailURL, g.LocalThumbnailPath,
+		g.Description, g.Rating, g.ReleaseDate,
+		g.SourceURL, g.ProviderThumbnailURL, g.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("updating gallery %d: %w", g.ID, err)

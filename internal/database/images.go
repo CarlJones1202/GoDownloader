@@ -3,8 +3,10 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
 	"sort"
 	"strings"
@@ -80,16 +82,29 @@ func (db *DB) GetImage(ctx context.Context, id int64) (*models.Image, error) {
 
 // CreateImage inserts a new image record and populates ID and CreatedAt.
 func (db *DB) CreateImage(ctx context.Context, img *models.Image) error {
-	result, err := db.ExecContext(ctx,
-		`INSERT INTO images
-		   (gallery_id, filename, original_url, width, height, duration_seconds,
-		    file_hash, dominant_colors, is_video, vr_mode, is_favorite)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		img.GalleryID, img.Filename, img.OriginalURL,
-		img.Width, img.Height, img.DurationSeconds,
-		img.FileHash, img.DominantColors,
-		img.IsVideo, img.VRMode, img.IsFavorite,
-	)
+	var result sql.Result
+	var err error
+	for attempt := 0; attempt < 5; attempt++ {
+		result, err = db.ExecContext(ctx,
+			`INSERT INTO images
+			   (gallery_id, filename, original_url, width, height, duration_seconds,
+			    file_hash, dominant_colors, is_video, vr_mode, is_favorite)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			img.GalleryID, img.Filename, img.OriginalURL,
+			img.Width, img.Height, img.DurationSeconds,
+			img.FileHash, img.DominantColors,
+			img.IsVideo, img.VRMode, img.IsFavorite,
+		)
+		if err == nil {
+			break
+		}
+		// Retry on locked database
+		if !strings.Contains(err.Error(), "database is locked") {
+			break
+		}
+		slog.Warn("database: CreateImage retrying", "attempt", attempt+1, "error", err)
+		time.Sleep(time.Duration(attempt*100) * time.Millisecond)
+	}
 	if err != nil {
 		return fmt.Errorf("creating image: %w", err)
 	}
