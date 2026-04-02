@@ -41,8 +41,12 @@ export function Lightbox({ images, index, onClose, onIndexChange }: LightboxProp
   const current = images[index];
   if (!current) return null;
 
+  const handleBackgroundClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) onClose();
+  };
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center" onClick={handleBackgroundClick}>
       {/* Close button */}
       <button
         onClick={onClose}

@@ -4,6 +4,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/carlj/godownload/internal/models"
@@ -225,6 +226,17 @@ func (db *DB) NextPendingItems(ctx context.Context, n int) ([]models.DownloadQue
 		return nil, fmt.Errorf("beginning transaction: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
+
+	// First, recover any stale active items (mark them back to pending).
+	_, err = tx.ExecContext(ctx,
+		`UPDATE download_queue
+		    SET status = ?, retry_count = retry_count + 1
+		  WHERE status = ? AND updated_at < datetime('now', '-30 minutes')`,
+		models.QueueStatusPending, models.QueueStatusActive,
+	)
+	if err != nil {
+		slog.Warn("queue: recovering stale active items", "error", err)
+	}
 
 	items := []models.DownloadQueue{}
 	err = tx.SelectContext(ctx, &items,
