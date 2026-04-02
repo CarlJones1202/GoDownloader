@@ -30,7 +30,7 @@ log:
   format: "text"
 
 wireguard:
-  conf_path: ""          # path to WireGuard .conf file (leave empty to disable)
+  conf_path: "wg.conf"          # path to WireGuard .conf file (leave empty to disable)
   bypass: false          # set true to skip VPN even when configured
   blocked_domains:       # domains that require VPN routing
     - metart.com
