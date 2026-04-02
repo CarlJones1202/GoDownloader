@@ -104,4 +104,3 @@ CREATE INDEX IF NOT EXISTS idx_gallery_persons_gallery  ON gallery_persons(galle
 CREATE INDEX IF NOT EXISTS idx_gallery_persons_person   ON gallery_persons(person_id);
 CREATE INDEX IF NOT EXISTS idx_download_queue_status    ON download_queue(status);
 CREATE INDEX IF NOT EXISTS idx_download_queue_type      ON download_queue(type);
-CREATE INDEX IF NOT EXISTS idx_download_queue_updated   ON download_queue(updated_at);

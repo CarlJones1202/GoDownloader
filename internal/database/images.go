@@ -22,7 +22,13 @@ type ImageFilter struct {
 	IsFavorite *bool
 	Limit      int
 	Offset     int
+	SortBy     string // "gallery_created_at" (default), "image_created_at"
 }
+
+const (
+	SortByGalleryCreatedAt = "gallery_created_at"
+	SortByImageCreatedAt   = "image_created_at"
+)
 
 // ListImages returns a paginated list of images.
 func (db *DB) ListImages(ctx context.Context, f ImageFilter) ([]models.Image, error) {
@@ -33,10 +39,19 @@ func (db *DB) ListImages(ctx context.Context, f ImageFilter) ([]models.Image, er
 		f.Limit = 50
 	}
 
-	query := `SELECT id, gallery_id, filename, original_url, width, height,
-	                 duration_seconds, file_hash, dominant_colors,
-	                 is_video, vr_mode, is_favorite, created_at
-	            FROM images WHERE 1=1`
+	// Default sort: gallery created_at DESC, image created_at DESC
+	sortOrder := "galleries.created_at DESC, images.created_at DESC"
+	if f.SortBy == SortByImageCreatedAt {
+		sortOrder = "images.created_at DESC"
+	}
+
+	query := `SELECT images.id, images.gallery_id, images.filename, images.original_url,
+	                 images.width, images.height, images.duration_seconds,
+	                 images.file_hash, images.dominant_colors,
+	                 images.is_video, images.vr_mode, images.is_favorite, images.created_at
+	            FROM images
+	       LEFT JOIN galleries ON images.gallery_id = galleries.id
+	            WHERE 1=1`
 	args := []any{}
 
 	if f.GalleryID != nil {
@@ -52,7 +67,7 @@ func (db *DB) ListImages(ctx context.Context, f ImageFilter) ([]models.Image, er
 		args = append(args, *f.IsFavorite)
 	}
 
-	query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	query += " ORDER BY " + sortOrder + " LIMIT ? OFFSET ?"
 	args = append(args, f.Limit, f.Offset)
 
 	images := []models.Image{}
@@ -131,6 +146,18 @@ func (db *DB) UpdateImageFilename(ctx context.Context, id int64, filename string
 	_, err := db.ExecContext(ctx, `UPDATE images SET filename = ? WHERE id = ?`, filename, id)
 	if err != nil {
 		return fmt.Errorf("updating filename for image %d: %w", id, err)
+	}
+	return nil
+}
+
+// UpdateImageVideoMeta sets the width, height, and duration for a video image record.
+func (db *DB) UpdateImageVideoMeta(ctx context.Context, id int64, width, height, durationSeconds int) error {
+	_, err := db.ExecContext(ctx,
+		`UPDATE images SET width = ?, height = ?, duration_seconds = ? WHERE id = ?`,
+		width, height, durationSeconds, id,
+	)
+	if err != nil {
+		return fmt.Errorf("updating video metadata for image %d: %w", id, err)
 	}
 	return nil
 }
