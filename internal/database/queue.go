@@ -4,7 +4,6 @@ package database
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/carlj/godownload/internal/models"
@@ -114,6 +113,19 @@ func (db *DB) IncrementRetry(ctx context.Context, id int64) error {
 		return fmt.Errorf("incrementing retry for queue item %d: %w", id, err)
 	}
 	return nil
+}
+
+// ResetActiveToPending resets all "active" items to "pending". Used on startup
+// to recover from crashes.
+func (db *DB) ResetActiveToPending(ctx context.Context) (int64, error) {
+	result, err := db.ExecContext(ctx,
+		`UPDATE download_queue SET status = ? WHERE status = ?`,
+		models.QueueStatusPending, models.QueueStatusActive,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("resetting active to pending: %w", err)
+	}
+	return result.RowsAffected()
 }
 
 // DeleteQueueItem removes a queue item by ID.
@@ -226,17 +238,6 @@ func (db *DB) NextPendingItems(ctx context.Context, n int) ([]models.DownloadQue
 		return nil, fmt.Errorf("beginning transaction: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
-
-	// First, recover any stale active items (mark them back to pending).
-	_, err = tx.ExecContext(ctx,
-		`UPDATE download_queue
-		    SET status = ?, retry_count = retry_count + 1
-		  WHERE status = ? AND updated_at < datetime('now', '-30 minutes')`,
-		models.QueueStatusPending, models.QueueStatusActive,
-	)
-	if err != nil {
-		slog.Warn("queue: recovering stale active items", "error", err)
-	}
 
 	items := []models.DownloadQueue{}
 	err = tx.SelectContext(ctx, &items,

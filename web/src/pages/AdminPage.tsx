@@ -27,6 +27,7 @@ import {
   Clock,
   Layers,
 } from 'lucide-react';
+import { usePagination } from '@/hooks/usePagination';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All statuses' },
@@ -55,13 +56,12 @@ function statusVariant(status: string): 'default' | 'success' | 'warning' | 'dan
 
 export function AdminPage() {
   const queryClient = useQueryClient();
-  const [offset, setOffset] = useState(0);
+  const { page, offset, limit, prevPage, nextPage, resetPage } = usePagination({ limit: 50 });
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [clearStatus, setClearStatus] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmCleanup, setConfirmCleanup] = useState(false);
-  const limit = 50;
 
   // --- Queries ---
 
@@ -182,7 +182,7 @@ export function AdminPage() {
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value);
-              setOffset(0);
+              resetPage();
             }}
             className="w-36"
           />
@@ -192,7 +192,7 @@ export function AdminPage() {
             value={typeFilter}
             onChange={(e) => {
               setTypeFilter(e.target.value);
-              setOffset(0);
+              resetPage();
             }}
             className="w-36"
           />
@@ -283,11 +283,10 @@ export function AdminPage() {
           </div>
 
           <Pagination
-            offset={offset}
-            limit={limit}
+            page={page}
             hasMore={queueItems.length === limit}
-            onPrev={() => setOffset(Math.max(0, offset - limit))}
-            onNext={() => setOffset(offset + limit)}
+            onPrev={prevPage}
+            onNext={nextPage}
           />
         </>
       )}

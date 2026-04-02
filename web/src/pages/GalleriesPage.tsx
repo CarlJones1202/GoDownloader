@@ -15,13 +15,13 @@ import {
   ConfirmDialog,
 } from '@/components/UI';
 import { Trash2 } from 'lucide-react';
+import { usePagination } from '@/hooks/usePagination';
 
 export function GalleriesPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
-  const [offset, setOffset] = useState(0);
+  const { page, offset, limit, prevPage, nextPage, resetPage } = usePagination({ limit: 50 });
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
-  const limit = 50;
 
   const { data: galleryList, isLoading } = useQuery({
     queryKey: ['galleries', { search, offset, limit }],
@@ -51,7 +51,7 @@ export function GalleriesPage() {
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
-            setOffset(0);
+            resetPage();
           }}
         />
       </div>
@@ -106,11 +106,10 @@ export function GalleriesPage() {
           </div>
 
           <Pagination
-            offset={offset}
-            limit={limit}
+            page={page}
             hasMore={galleryList.length === limit}
-            onPrev={() => setOffset(Math.max(0, offset - limit))}
-            onNext={() => setOffset(offset + limit)}
+            onPrev={prevPage}
+            onNext={nextPage}
           />
         </>
       )}

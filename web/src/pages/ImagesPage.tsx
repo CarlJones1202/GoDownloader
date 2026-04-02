@@ -16,16 +16,16 @@ import { JustifiedGrid } from '@/components/JustifiedGrid';
 import type { JustifiedItem } from '@/components/JustifiedGrid';
 import { Lightbox } from '@/components/Lightbox';
 import { Heart, Download, Search, Palette, Trash2 } from 'lucide-react';
+import { usePagination } from '@/hooks/usePagination';
 
 export function ImagesPage() {
   const queryClient = useQueryClient();
-  const [offset, setOffset] = useState(0);
+  const { page, offset, limit, prevPage, nextPage, resetPage } = usePagination({ limit: 50 });
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [colorSearch, setColorSearch] = useState('');
   const [activeColorSearch, setActiveColorSearch] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const limit = 50;
 
   // Regular list query
   const { data: imageList, isLoading } = useQuery({
@@ -169,7 +169,7 @@ export function ImagesPage() {
           size="sm"
           onClick={() => {
             setFavoritesOnly(!favoritesOnly);
-            setOffset(0);
+            resetPage();
           }}
         >
           <Heart size={14} /> Favorites
@@ -223,11 +223,10 @@ export function ImagesPage() {
 
           {!activeColorSearch && (
             <Pagination
-              offset={offset}
-              limit={limit}
+              page={page}
               hasMore={displayImages.length === limit}
-              onPrev={() => setOffset(Math.max(0, offset - limit))}
-              onNext={() => setOffset(offset + limit)}
+              onPrev={prevPage}
+              onNext={nextPage}
             />
           )}
         </>

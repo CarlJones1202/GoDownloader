@@ -10,11 +10,12 @@ import {
   Badge,
   Button,
   ConfirmDialog,
+  Input,
 } from '@/components/UI';
 import { JustifiedGrid } from '@/components/JustifiedGrid';
 import type { JustifiedItem } from '@/components/JustifiedGrid';
 import { Lightbox } from '@/components/Lightbox';
-import { Heart, ArrowLeft, Trash2 } from 'lucide-react';
+import { Heart, ArrowLeft, Trash2, Edit2, Save, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function GalleryDetailPage() {
@@ -26,6 +27,8 @@ export function GalleryDetailPage() {
   const [confirmDeleteGallery, setConfirmDeleteGallery] = useState(false);
   const [confirmDeleteImageId, setConfirmDeleteImageId] = useState<number | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editedTitle, setEditedTitle] = useState('');
 
   const { data: gallery, isLoading: loadingGallery } = useQuery({
     queryKey: ['gallery', galleryId],
@@ -51,6 +54,28 @@ export function GalleryDetailPage() {
       navigate('/galleries');
     },
   });
+
+  const updateTitleMut = useMutation({
+    mutationFn: (title: string) => galleries.update(galleryId, { title }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
+      setIsEditingTitle(false);
+    },
+  });
+
+  const startEditTitle = () => {
+    setEditedTitle(gallery?.title || '');
+    setIsEditingTitle(true);
+  };
+
+  const cancelEditTitle = () => {
+    setIsEditingTitle(false);
+    setEditedTitle('');
+  };
+
+  const saveTitle = () => {
+    updateTitleMut.mutate(editedTitle);
+  };
 
   const deleteImageMut = useMutation({
     mutationFn: (imgId: number) => imagesApi.delete(imgId),
@@ -140,7 +165,34 @@ export function GalleryDetailPage() {
         </Link>
       </div>
 
-      <PageHeader title={gallery.title || `Gallery #${gallery.id}`}>
+      <PageHeader
+        title={
+          isEditingTitle ? (
+            <div className="flex items-center gap-2">
+              <Input
+                value={editedTitle}
+                onChange={(e) => setEditedTitle(e.target.value)}
+                className="w-64 h-8"
+                autoFocus
+                onKeyDown={(e) => e.key === 'Enter' && saveTitle()}
+              />
+              <Button size="sm" onClick={saveTitle} disabled={updateTitleMut.isPending}>
+                <Save size={14} />
+              </Button>
+              <Button size="sm" variant="ghost" onClick={cancelEditTitle}>
+                <X size={14} />
+              </Button>
+            </div>
+          ) : (
+            <span>{gallery.title || `Gallery #${gallery.id}`}</span>
+          )
+        }
+      >
+        {!isEditingTitle && (
+          <Button variant="secondary" size="sm" onClick={startEditTitle}>
+            <Edit2 size={14} /> Edit
+          </Button>
+        )}
         {gallery.provider && <Badge>{gallery.provider}</Badge>}
         <Button
           variant="danger"

@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
 
 interface PageHeaderProps {
-  title: string;
+  title: React.ReactNode;
   description?: string;
   children?: React.ReactNode;
 }
@@ -200,21 +200,18 @@ export function ConfirmDialog({
 }
 
 interface PaginationProps {
-  offset: number;
-  limit: number;
+  page: number;
   hasMore: boolean;
   onPrev: () => void;
   onNext: () => void;
 }
 
-export function Pagination({ offset, limit, hasMore, onPrev, onNext }: PaginationProps) {
+export function Pagination({ page, hasMore, onPrev, onNext }: PaginationProps) {
   return (
     <div className="flex items-center justify-between mt-4 text-sm text-zinc-400">
-      <span>
-        Showing {offset + 1}–{offset + limit}
-      </span>
+      <span>Page {page}</span>
       <div className="flex gap-2">
-        <Button variant="ghost" size="sm" onClick={onPrev} disabled={offset === 0}>
+        <Button variant="ghost" size="sm" onClick={onPrev} disabled={page <= 1}>
           Previous
         </Button>
         <Button variant="ghost" size="sm" onClick={onNext} disabled={!hasMore}>

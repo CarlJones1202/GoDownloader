@@ -84,8 +84,7 @@ CREATE TABLE IF NOT EXISTS download_queue (
     status        TEXT    NOT NULL DEFAULT 'pending',
     retry_count   INTEGER NOT NULL DEFAULT 0,
     error_message TEXT,
-    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Indexes
@@ -100,3 +99,4 @@ CREATE INDEX IF NOT EXISTS idx_gallery_persons_gallery  ON gallery_persons(galle
 CREATE INDEX IF NOT EXISTS idx_gallery_persons_person   ON gallery_persons(person_id);
 CREATE INDEX IF NOT EXISTS idx_download_queue_status    ON download_queue(status);
 CREATE INDEX IF NOT EXISTS idx_download_queue_type      ON download_queue(type);
+CREATE INDEX IF NOT EXISTS idx_download_queue_updated   ON download_queue(updated_at);

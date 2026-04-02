@@ -123,31 +123,76 @@ func (e *Enricher) LookupPerson(ctx context.Context, name string) *EnrichResult 
 	}
 }
 
-// LookupProvider queries a single provider by name.
+// LookupProvider queries a single provider by name and returns the best match.
 func (e *Enricher) LookupProvider(ctx context.Context, provider, name string) (*PersonInfo, error) {
+	results, err := e.SearchProvider(ctx, provider, name)
+	if err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, fmt.Errorf("%s: no results for %q", provider, name)
+	}
+	return &results[0], nil
+}
+
+// SearchProvider queries a single provider and returns ALL matching results.
+// StashDB returns multiple candidates; scrapers (FreeOnes, Babepedia, etc.)
+// return at most one result wrapped in a slice.
+func (e *Enricher) SearchProvider(ctx context.Context, provider, name string) ([]PersonInfo, error) {
 	switch strings.ToLower(provider) {
 	case "stashdb":
-		results, err := e.stashDB.SearchByName(ctx, name)
+		return e.stashDB.SearchByName(ctx, name)
+	case "freeones":
+		info, err := e.freeones.SearchByName(ctx, name)
 		if err != nil {
 			return nil, err
 		}
-		if len(results) == 0 {
-			return nil, fmt.Errorf("stashdb: no results for %q", name)
-		}
-		return &results[0], nil
-	case "freeones":
-		return e.freeones.SearchByName(ctx, name)
+		return []PersonInfo{*info}, nil
 	case "babepedia":
-		return e.babepedia.SearchByName(ctx, name)
+		info, err := e.babepedia.SearchByName(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		return []PersonInfo{*info}, nil
 	case "metart":
-		return e.metart.SearchModel(ctx, name)
+		info, err := e.metart.SearchModel(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		return []PersonInfo{*info}, nil
 	case "metartx":
-		return e.metartX.SearchModel(ctx, name)
+		info, err := e.metartX.SearchModel(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		return []PersonInfo{*info}, nil
 	case "playboy":
-		return e.playboy.SearchModel(ctx, name)
+		info, err := e.playboy.SearchModel(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		return []PersonInfo{*info}, nil
 	default:
 		return nil, fmt.Errorf("unknown provider %q", provider)
 	}
+}
+
+// GetByExternalID fetches a single performer from a provider by their external ID.
+// Currently only StashDB supports this (via UUID); other providers return an error.
+func (e *Enricher) GetByExternalID(ctx context.Context, provider, externalID string) (*PersonInfo, error) {
+	switch strings.ToLower(provider) {
+	case "stashdb":
+		return e.stashDB.GetByID(ctx, externalID)
+	case "freeones":
+		return e.freeones.GetBySlug(ctx, externalID)
+	default:
+		return nil, fmt.Errorf("provider %q does not support lookup by external ID", provider)
+	}
+}
+
+// ListProviders returns the names of all available providers.
+func (e *Enricher) ListProviders() []string {
+	return []string{"stashdb", "freeones", "babepedia", "metart", "metartx", "playboy"}
 }
 
 // mergePersonInfos picks the best non-nil value for each field across all results.

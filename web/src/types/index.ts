@@ -121,7 +121,29 @@ export interface PersonInfo {
   aliases?: string[];
   birth_date?: string;
   nationality?: string;
+  ethnicity?: string;
+  hair_color?: string;
+  eye_color?: string;
+  height?: string;
+  weight?: string;
+  measurements?: string;
+  tattoos?: string;
+  piercings?: string;
+  biography?: string;
+  image_url?: string;
   external_id?: string;
+}
+
+export interface ProviderSearchResponse {
+  provider: string;
+  query: string;
+  results: PersonInfo[];
+}
+
+export interface IdentifyRequest {
+  provider: string;
+  external_id: string;
+  apply: boolean;
 }
 
 export interface PaginationParams {

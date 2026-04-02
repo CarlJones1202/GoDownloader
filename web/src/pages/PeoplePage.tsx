@@ -15,10 +15,11 @@ import {
   ConfirmDialog,
 } from '@/components/UI';
 import { Plus, Search, Trash2, Users, Sparkles, Merge, ChevronRight } from 'lucide-react';
+import { usePagination } from '@/hooks/usePagination';
 
 export function PeoplePage() {
   const queryClient = useQueryClient();
-  const [offset, setOffset] = useState(0);
+  const { page, offset, limit, prevPage, nextPage, resetPage } = usePagination({ limit: 50 });
   const [search, setSearch] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
@@ -27,7 +28,6 @@ export function PeoplePage() {
   const [bulkAction, setBulkAction] = useState<'enrich' | 'merge' | 'delete' | null>(null);
   const [mergeKeepId, setMergeKeepId] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const limit = 50;
 
   const { data: personList, isLoading } = useQuery({
     queryKey: ['people', { offset, limit, search: activeSearch || undefined }],
@@ -85,7 +85,7 @@ export function PeoplePage() {
 
   const handleSearch = () => {
     setActiveSearch(search);
-    setOffset(0);
+    resetPage();
   };
 
   const toggleSelect = (id: number) => {
@@ -136,7 +136,7 @@ export function PeoplePage() {
             onClick={() => {
               setSearch('');
               setActiveSearch('');
-              setOffset(0);
+              resetPage();
             }}
           >
             Clear
@@ -337,11 +337,10 @@ export function PeoplePage() {
           </div>
 
           <Pagination
-            offset={offset}
-            limit={limit}
+            page={page}
             hasMore={personList.length === limit}
-            onPrev={() => setOffset(Math.max(0, offset - limit))}
-            onNext={() => setOffset(offset + limit)}
+            onPrev={prevPage}
+            onNext={nextPage}
           />
         </>
       )}

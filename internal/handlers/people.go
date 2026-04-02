@@ -33,6 +33,7 @@ func (h *PeopleHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/bulk/enrich", h.bulkEnrich)
 	rg.POST("/bulk/merge", h.bulkMerge)
 	rg.DELETE("/bulk", h.bulkDelete)
+	rg.GET("/providers", h.listProviders)
 	rg.GET("/:id", h.get)
 	rg.PUT("/:id", h.update)
 	rg.DELETE("/:id", h.delete)
@@ -42,6 +43,8 @@ func (h *PeopleHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/:id/identifiers", h.listIdentifiers)
 	rg.POST("/:id/identifiers", h.upsertIdentifier)
 	rg.POST("/:id/enrich", h.enrich)
+	rg.GET("/:id/search", h.searchProviders)
+	rg.POST("/:id/identify", h.identify)
 }
 
 type createPersonRequest struct {
@@ -481,5 +484,176 @@ func (h *PeopleHandler) bulkDelete(c *gin.Context) {
 		"message":   "bulk delete complete",
 		"requested": len(req.PersonIDs),
 		"deleted":   deleted,
+	})
+}
+
+// listProviders returns the available external metadata providers.
+func (h *PeopleHandler) listProviders(c *gin.Context) {
+	respondOK(c, h.enricher.ListProviders())
+}
+
+// searchProviders searches external providers for a person by name and returns
+// all matching candidates (not just the best match).
+//
+// Query params:
+//   - provider: which provider to search (required: stashdb, freeones, babepedia, metart, metartx, playboy)
+//   - query: override search term (defaults to the person's name)
+func (h *PeopleHandler) searchProviders(c *gin.Context) {
+	id, ok := parseIDParam(c)
+	if !ok {
+		return
+	}
+
+	p, err := h.db.GetPerson(c.Request.Context(), id)
+	if err != nil {
+		handleDBError(c, err)
+		return
+	}
+
+	providerName := c.Query("provider")
+	if providerName == "" {
+		respondError(c, http.StatusBadRequest, "provider query parameter is required")
+		return
+	}
+
+	query := c.Query("query")
+	if query == "" {
+		query = p.Name
+	}
+
+	results, searchErr := h.enricher.SearchProvider(c.Request.Context(), providerName, query)
+	if searchErr != nil {
+		respondError(c, http.StatusBadGateway, searchErr.Error())
+		return
+	}
+
+	// Convert PersonInfo results to a JSON-friendly shape with string dates.
+	type searchResult struct {
+		Name         string   `json:"name"`
+		Aliases      []string `json:"aliases,omitempty"`
+		BirthDate    *string  `json:"birth_date,omitempty"`
+		Nationality  *string  `json:"nationality,omitempty"`
+		Ethnicity    *string  `json:"ethnicity,omitempty"`
+		HairColor    *string  `json:"hair_color,omitempty"`
+		EyeColor     *string  `json:"eye_color,omitempty"`
+		Height       *string  `json:"height,omitempty"`
+		Weight       *string  `json:"weight,omitempty"`
+		Measurements *string  `json:"measurements,omitempty"`
+		Tattoos      *string  `json:"tattoos,omitempty"`
+		Piercings    *string  `json:"piercings,omitempty"`
+		Biography    *string  `json:"biography,omitempty"`
+		ImageURL     *string  `json:"image_url,omitempty"`
+		ExternalID   *string  `json:"external_id,omitempty"`
+	}
+
+	out := make([]searchResult, 0, len(results))
+	for _, r := range results {
+		sr := searchResult{
+			Name:         r.Name,
+			Aliases:      r.Aliases,
+			Nationality:  r.Nationality,
+			Ethnicity:    r.Ethnicity,
+			HairColor:    r.HairColor,
+			EyeColor:     r.EyeColor,
+			Height:       r.Height,
+			Weight:       r.Weight,
+			Measurements: r.Measurements,
+			Tattoos:      r.Tattoos,
+			Piercings:    r.Piercings,
+			Biography:    r.Biography,
+			ImageURL:     r.ImageURL,
+			ExternalID:   r.ExternalID,
+		}
+		if r.BirthDate != nil {
+			bd := r.BirthDate.Format("2006-01-02")
+			sr.BirthDate = &bd
+		}
+		out = append(out, sr)
+	}
+
+	respondOK(c, gin.H{
+		"provider": providerName,
+		"query":    query,
+		"results":  out,
+	})
+}
+
+// identifyRequest is the body for POST /people/:id/identify.
+type identifyRequest struct {
+	Provider   string `json:"provider"    binding:"required"`
+	ExternalID string `json:"external_id" binding:"required"`
+	Apply      bool   `json:"apply"` // if true, also merge metadata into the person record
+}
+
+// identify links a person to a specific external provider result (by external ID),
+// optionally applying the metadata to the person record.
+func (h *PeopleHandler) identify(c *gin.Context) {
+	id, ok := parseIDParam(c)
+	if !ok {
+		return
+	}
+
+	p, err := h.db.GetPerson(c.Request.Context(), id)
+	if err != nil {
+		handleDBError(c, err)
+		return
+	}
+
+	var req identifyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Save the external identifier.
+	pid := &models.PersonIdentifier{
+		PersonID:   p.ID,
+		Provider:   req.Provider,
+		ExternalID: req.ExternalID,
+	}
+	if err := h.db.UpsertPersonIdentifier(c.Request.Context(), pid); err != nil {
+		handleDBError(c, err)
+		return
+	}
+
+	if !req.Apply {
+		// Just save the identifier, don't fetch/apply metadata.
+		respondOK(c, gin.H{
+			"message":    "identifier saved",
+			"person":     p,
+			"identifier": pid,
+		})
+		return
+	}
+
+	// Fetch full details from the provider using the external ID and apply.
+	info, fetchErr := h.enricher.GetByExternalID(c.Request.Context(), req.Provider, req.ExternalID)
+	if fetchErr != nil {
+		// The identifier was already saved — warn but don't fail.
+		slog.Warn("identify: could not fetch details to apply",
+			"person_id", p.ID, "provider", req.Provider, "external_id", req.ExternalID, "error", fetchErr)
+
+		// Fall back: try searching by name and matching external ID from the results.
+		results, searchErr := h.enricher.SearchProvider(c.Request.Context(), req.Provider, p.Name)
+		if searchErr == nil {
+			for _, r := range results {
+				if r.ExternalID != nil && *r.ExternalID == req.ExternalID {
+					info = &r
+					break
+				}
+			}
+		}
+	}
+
+	if info != nil {
+		h.applyPersonInfo(c, p, info, req.Provider)
+		return
+	}
+
+	// Identifier saved but couldn't fetch metadata to apply.
+	respondOK(c, gin.H{
+		"message":    "identifier saved (metadata fetch failed)",
+		"person":     p,
+		"identifier": pid,
 	})
 }

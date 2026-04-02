@@ -6,10 +6,12 @@ import type {
   DownloadQueue,
   EnrichResult,
   Gallery,
+  IdentifyRequest,
   Image,
   PaginationParams,
   Person,
   PersonIdentifier,
+  ProviderSearchResponse,
   QueueStatus,
   Source,
 } from '@/types';
@@ -150,6 +152,14 @@ export const people = {
     request<{ deleted: number }>(
       '/people/bulk',
       { method: 'DELETE', body: JSON.stringify({ person_ids: personIds }) },
+    ),
+  providers: () => request<string[]>('/people/providers'),
+  search: (id: number, provider: string, query?: string) =>
+    request<ProviderSearchResponse>(`/people/${id}/search${qs({ provider, query })}`),
+  identify: (id: number, data: IdentifyRequest) =>
+    request<{ message: string; person: Person; identifier: PersonIdentifier }>(
+      `/people/${id}/identify`,
+      { method: 'POST', body: JSON.stringify(data) },
     ),
 };
 

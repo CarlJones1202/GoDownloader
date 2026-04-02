@@ -272,22 +272,10 @@ func (c *Crawler) process(j job) {
 	// Create galleries and enqueue image downloads.
 	totalImages := 0
 	for title, imageLinks := range galleries {
-		// Build gallery title: use source name as base. If the parser
-		// extracted a real title (not "Untitled N"), append it.
-		galleryTitle := title
-		if src.Name != "" {
-			if strings.HasPrefix(title, "Untitled") {
-				// For single-post sources, just use the source name.
-				// For multi-post sources with generic titles, append
-				// the number to avoid collisions.
-				if len(galleries) == 1 {
-					galleryTitle = src.Name
-				} else {
-					galleryTitle = src.Name + " - " + title
-				}
-			} else {
-				galleryTitle = src.Name + " - " + title
-			}
+		// Gallery title is ONLY the source name - never from page content.
+		galleryTitle := src.Name
+		if galleryTitle == "" {
+			galleryTitle = title
 		}
 
 		galleryID, err := c.ensureGallery(ctx, src.ID, galleryTitle, src.URL)

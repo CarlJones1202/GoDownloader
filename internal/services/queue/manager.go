@@ -5,6 +5,7 @@ package queue
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -65,8 +66,25 @@ func (m *Manager) RegisterProcessor(queueType models.QueueType, p Processor) {
 
 // Start begins the polling loop. It is non-blocking.
 func (m *Manager) Start() {
+	m.recoverStuckItems()
 	m.wg.Add(1)
 	go m.loop()
+}
+
+// recoverStuckItems resets any "active" items to "pending" on startup.
+// This handles cases where the server crashed or was killed mid-download.
+func (m *Manager) recoverStuckItems() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	rows, err := m.db.ResetActiveToPending(ctx)
+	if err != nil {
+		slog.Error("queue: recovery: failed to reset stuck items", "error", err)
+		return
+	}
+	if rows > 0 {
+		slog.Info("queue: recovery: reset stuck items", "count", rows)
+	}
 }
 
 // Stop signals the manager to stop accepting new work and waits for
@@ -107,7 +125,7 @@ func (m *Manager) loop() {
 			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			items, err := m.db.NextPendingItems(ctx, defaultBatchSize)
+			items, err := m.db.NextPendingItems(ctx, m.workers)
 			cancel()
 
 			if err != nil {
@@ -123,6 +141,11 @@ func (m *Manager) loop() {
 				m.wg.Add(1)
 				go func() {
 					defer func() {
+						if r := recover(); r != nil {
+							slog.Error("queue: worker panicked", "id", item.ID, "type", item.Type, "panic", r)
+							msg := fmt.Sprintf("panic: %v", r)
+							_ = m.db.UpdateQueueStatus(context.Background(), item.ID, models.QueueStatusFailed, &msg)
+						}
 						<-sem // release slot
 						m.wg.Done()
 					}()
@@ -152,9 +175,15 @@ func (m *Manager) dispatch(item *models.DownloadQueue) {
 	defer cancel()
 
 	err := proc.Process(ctx, item)
+
+	// Use a fresh context for status updates — the processing context may
+	// have expired or been cancelled, and we must always record the outcome.
+	statusCtx, statusCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer statusCancel()
+
 	if err == nil {
 		slog.Info("queue: item completed", "id", item.ID, "type", item.Type)
-		_ = m.db.UpdateQueueStatus(ctx, item.ID, models.QueueStatusCompleted, nil)
+		_ = m.db.UpdateQueueStatus(statusCtx, item.ID, models.QueueStatusCompleted, nil)
 		return
 	}
 
@@ -168,9 +197,9 @@ func (m *Manager) dispatch(item *models.DownloadQueue) {
 
 	if item.RetryCount >= m.maxRetries {
 		msg := err.Error()
-		_ = m.db.UpdateQueueStatus(ctx, item.ID, models.QueueStatusFailed, &msg)
+		_ = m.db.UpdateQueueStatus(statusCtx, item.ID, models.QueueStatusFailed, &msg)
 		return
 	}
 
-	_ = m.db.IncrementRetry(ctx, item.ID)
+	_ = m.db.IncrementRetry(statusCtx, item.ID)
 }

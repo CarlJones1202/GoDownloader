@@ -13,12 +13,12 @@ import {
   ConfirmDialog,
 } from '@/components/UI';
 import { Trash2 } from 'lucide-react';
+import { usePagination } from '@/hooks/usePagination';
 
 export function VideosPage() {
   const queryClient = useQueryClient();
-  const [offset, setOffset] = useState(0);
+  const { page, offset, limit, prevPage, nextPage } = usePagination({ limit: 50 });
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
-  const limit = 50;
 
   const { data: videoList, isLoading } = useQuery({
     queryKey: ['videos', { offset, limit }],
@@ -78,11 +78,10 @@ export function VideosPage() {
           </div>
 
           <Pagination
-            offset={offset}
-            limit={limit}
+            page={page}
             hasMore={videoList.length === limit}
-            onPrev={() => setOffset(Math.max(0, offset - limit))}
-            onNext={() => setOffset(offset + limit)}
+            onPrev={prevPage}
+            onNext={nextPage}
           />
         </>
       )}

@@ -84,8 +84,7 @@ CREATE TABLE IF NOT EXISTS download_queue (
     status        TEXT    NOT NULL DEFAULT 'pending',
     retry_count   INTEGER NOT NULL DEFAULT 0,
     error_message TEXT,
-    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Indexes
