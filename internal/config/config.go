@@ -49,9 +49,10 @@ type CrawlerConfig struct {
 
 // StorageConfig holds file storage paths.
 type StorageConfig struct {
-	ImagesDir     string `yaml:"images_dir"`
-	ThumbnailsDir string `yaml:"thumbnails_dir"`
-	VideosDir     string `yaml:"videos_dir"`
+	ImagesDir       string `yaml:"images_dir"`
+	ThumbnailsDir   string `yaml:"thumbnails_dir"`
+	VideosDir       string `yaml:"videos_dir"`
+	PersonPhotosDir string `yaml:"person_photos_dir"`
 }
 
 // LogConfig holds logging settings.
@@ -121,9 +122,10 @@ func defaults() *Config {
 			CrawlInterval:  6 * time.Hour,
 		},
 		Storage: StorageConfig{
-			ImagesDir:     "data/images",
-			ThumbnailsDir: "data/thumbnails",
-			VideosDir:     "data/videos",
+			ImagesDir:       "data/images",
+			ThumbnailsDir:   "data/thumbnails",
+			VideosDir:       "data/videos",
+			PersonPhotosDir: "data/person_photos",
 		},
 		Log: LogConfig{
 			Level:  "info",

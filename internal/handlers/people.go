@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -10,20 +11,22 @@ import (
 	"github.com/carlj/godownload/internal/database"
 	"github.com/carlj/godownload/internal/models"
 	"github.com/carlj/godownload/internal/services/linker"
+	"github.com/carlj/godownload/internal/services/personphoto"
 	"github.com/carlj/godownload/internal/services/providers"
 	"github.com/gin-gonic/gin"
 )
 
 // PeopleHandler handles HTTP requests for the /api/v1/people resource.
 type PeopleHandler struct {
-	db       *database.DB
-	linker   *linker.AutoLinker
-	enricher *providers.Enricher
+	db              *database.DB
+	linker          *linker.AutoLinker
+	enricher        *providers.Enricher
+	photoDownloader *personphoto.Downloader
 }
 
 // NewPeopleHandler creates a PeopleHandler.
-func NewPeopleHandler(db *database.DB, al *linker.AutoLinker, enricher *providers.Enricher) *PeopleHandler {
-	return &PeopleHandler{db: db, linker: al, enricher: enricher}
+func NewPeopleHandler(db *database.DB, al *linker.AutoLinker, enricher *providers.Enricher, photoDownloader *personphoto.Downloader) *PeopleHandler {
+	return &PeopleHandler{db: db, linker: al, enricher: enricher, photoDownloader: photoDownloader}
 }
 
 // RegisterRoutes registers all people routes on the given group.
@@ -55,10 +58,19 @@ type createPersonRequest struct {
 }
 
 type updatePersonRequest struct {
-	Name        *string `json:"name"`
-	Aliases     *string `json:"aliases"`
-	BirthDate   *string `json:"birth_date"`
-	Nationality *string `json:"nationality"`
+	Name         *string `json:"name"`
+	Aliases      *string `json:"aliases"`
+	BirthDate    *string `json:"birth_date"`
+	Nationality  *string `json:"nationality"`
+	Ethnicity    *string `json:"ethnicity"`
+	HairColor    *string `json:"hair_color"`
+	EyeColor     *string `json:"eye_color"`
+	Height       *string `json:"height"`
+	Weight       *string `json:"weight"`
+	Measurements *string `json:"measurements"`
+	Tattoos      *string `json:"tattoos"`
+	Piercings    *string `json:"piercings"`
+	Biography    *string `json:"biography"`
 }
 
 type upsertIdentifierRequest struct {
@@ -148,6 +160,33 @@ func (h *PeopleHandler) update(c *gin.Context) {
 	}
 	if req.Nationality != nil {
 		p.Nationality = req.Nationality
+	}
+	if req.Ethnicity != nil {
+		p.Ethnicity = req.Ethnicity
+	}
+	if req.HairColor != nil {
+		p.HairColor = req.HairColor
+	}
+	if req.EyeColor != nil {
+		p.EyeColor = req.EyeColor
+	}
+	if req.Height != nil {
+		p.Height = req.Height
+	}
+	if req.Weight != nil {
+		p.Weight = req.Weight
+	}
+	if req.Measurements != nil {
+		p.Measurements = req.Measurements
+	}
+	if req.Tattoos != nil {
+		p.Tattoos = req.Tattoos
+	}
+	if req.Piercings != nil {
+		p.Piercings = req.Piercings
+	}
+	if req.Biography != nil {
+		p.Biography = req.Biography
 	}
 
 	if err := h.db.UpdatePerson(c.Request.Context(), p); err != nil {
@@ -313,17 +352,23 @@ func (h *PeopleHandler) enrich(c *gin.Context) {
 }
 
 // applyPersonInfo merges provider metadata into the person record, saves
-// the external ID as an identifier, and returns the updated person.
+// the external ID as an identifier, downloads photos, and returns the updated person.
 func (h *PeopleHandler) applyPersonInfo(c *gin.Context, p *models.Person, info *providers.PersonInfo, providerName string) {
-	if info.Aliases != nil && p.Aliases == nil {
-		joined := strings.Join(info.Aliases, ", ")
-		p.Aliases = &joined
-	}
-	if info.BirthDate != nil && p.BirthDate == nil {
-		p.BirthDate = info.BirthDate
-	}
-	if info.Nationality != nil && p.Nationality == nil {
-		p.Nationality = info.Nationality
+	h.mergePersonFields(p, info)
+
+	// Download provider photos and store local paths.
+	if h.photoDownloader != nil && len(info.ImageURLs) > 0 {
+		localPaths := h.photoDownloader.DownloadAll(c.Request.Context(), info.ImageURLs, p.ID)
+		if len(localPaths) > 0 {
+			// Merge with any existing photos.
+			existing := decodePhotoPaths(p.Photos)
+			merged := mergePhotoPaths(existing, localPaths)
+			encoded, err := json.Marshal(merged)
+			if err == nil {
+				s := string(encoded)
+				p.Photos = &s
+			}
+		}
 	}
 
 	if err := h.db.UpdatePerson(c.Request.Context(), p); err != nil {
@@ -402,15 +447,20 @@ func (h *PeopleHandler) bulkEnrich(c *gin.Context) {
 // applyPersonInfoQuiet merges provider metadata into the person record without
 // writing an HTTP response. Used for bulk operations.
 func (h *PeopleHandler) applyPersonInfoQuiet(ctx context.Context, p *models.Person, info *providers.PersonInfo, providerName string) {
-	if info.Aliases != nil && p.Aliases == nil {
-		joined := strings.Join(info.Aliases, ", ")
-		p.Aliases = &joined
-	}
-	if info.BirthDate != nil && p.BirthDate == nil {
-		p.BirthDate = info.BirthDate
-	}
-	if info.Nationality != nil && p.Nationality == nil {
-		p.Nationality = info.Nationality
+	h.mergePersonFields(p, info)
+
+	// Download provider photos and store local paths.
+	if h.photoDownloader != nil && len(info.ImageURLs) > 0 {
+		localPaths := h.photoDownloader.DownloadAll(ctx, info.ImageURLs, p.ID)
+		if len(localPaths) > 0 {
+			existing := decodePhotoPaths(p.Photos)
+			merged := mergePhotoPaths(existing, localPaths)
+			encoded, err := json.Marshal(merged)
+			if err == nil {
+				s := string(encoded)
+				p.Photos = &s
+			}
+		}
 	}
 
 	if err := h.db.UpdatePerson(ctx, p); err != nil {
@@ -543,6 +593,7 @@ func (h *PeopleHandler) searchProviders(c *gin.Context) {
 		Piercings    *string  `json:"piercings,omitempty"`
 		Biography    *string  `json:"biography,omitempty"`
 		ImageURL     *string  `json:"image_url,omitempty"`
+		ImageURLs    []string `json:"image_urls,omitempty"`
 		ExternalID   *string  `json:"external_id,omitempty"`
 	}
 
@@ -562,6 +613,7 @@ func (h *PeopleHandler) searchProviders(c *gin.Context) {
 			Piercings:    r.Piercings,
 			Biography:    r.Biography,
 			ImageURL:     r.ImageURL,
+			ImageURLs:    r.ImageURLs,
 			ExternalID:   r.ExternalID,
 		}
 		if r.BirthDate != nil {
@@ -656,4 +708,75 @@ func (h *PeopleHandler) identify(c *gin.Context) {
 		"person":     p,
 		"identifier": pid,
 	})
+}
+
+// mergePersonFields applies all metadata fields from a PersonInfo into the
+// person record, only filling in fields that are currently nil/empty.
+func (h *PeopleHandler) mergePersonFields(p *models.Person, info *providers.PersonInfo) {
+	if info.Aliases != nil && p.Aliases == nil {
+		joined := strings.Join(info.Aliases, ", ")
+		p.Aliases = &joined
+	}
+	if info.BirthDate != nil && p.BirthDate == nil {
+		p.BirthDate = info.BirthDate
+	}
+	if info.Nationality != nil && p.Nationality == nil {
+		p.Nationality = info.Nationality
+	}
+	if info.Ethnicity != nil && p.Ethnicity == nil {
+		p.Ethnicity = info.Ethnicity
+	}
+	if info.HairColor != nil && p.HairColor == nil {
+		p.HairColor = info.HairColor
+	}
+	if info.EyeColor != nil && p.EyeColor == nil {
+		p.EyeColor = info.EyeColor
+	}
+	if info.Height != nil && p.Height == nil {
+		p.Height = info.Height
+	}
+	if info.Weight != nil && p.Weight == nil {
+		p.Weight = info.Weight
+	}
+	if info.Measurements != nil && p.Measurements == nil {
+		p.Measurements = info.Measurements
+	}
+	if info.Tattoos != nil && p.Tattoos == nil {
+		p.Tattoos = info.Tattoos
+	}
+	if info.Piercings != nil && p.Piercings == nil {
+		p.Piercings = info.Piercings
+	}
+	if info.Biography != nil && p.Biography == nil {
+		p.Biography = info.Biography
+	}
+}
+
+// decodePhotoPaths decodes a JSON array of photo paths from the person's Photos field.
+func decodePhotoPaths(photos *string) []string {
+	if photos == nil || *photos == "" {
+		return nil
+	}
+	var paths []string
+	if err := json.Unmarshal([]byte(*photos), &paths); err != nil {
+		return nil
+	}
+	return paths
+}
+
+// mergePhotoPaths merges existing and new photo paths, deduplicating.
+func mergePhotoPaths(existing, newPaths []string) []string {
+	seen := make(map[string]struct{}, len(existing))
+	merged := make([]string, 0, len(existing)+len(newPaths))
+	for _, p := range existing {
+		seen[p] = struct{}{}
+		merged = append(merged, p)
+	}
+	for _, p := range newPaths {
+		if _, ok := seen[p]; !ok {
+			merged = append(merged, p)
+			seen[p] = struct{}{}
+		}
+	}
+	return merged
 }

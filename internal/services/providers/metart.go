@@ -157,6 +157,9 @@ func mapMetArtModel(model metartModelResponse) PersonInfo {
 	}
 
 	info.ImageURL = model.HeadshotURL
+	if info.ImageURL != nil {
+		info.ImageURLs = []string{*info.ImageURL}
+	}
 
 	return info
 }

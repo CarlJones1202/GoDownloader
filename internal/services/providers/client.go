@@ -33,8 +33,9 @@ type PersonInfo struct {
 	Tattoos      *string
 	Piercings    *string
 	Biography    *string
-	ImageURL     *string // profile/headshot URL
-	ExternalID   *string // provider-specific ID (StashDB UUID, slug, etc.)
+	ImageURL     *string  // primary profile/headshot URL (first photo)
+	ImageURLs    []string // all available photo URLs from this provider
+	ExternalID   *string  // provider-specific ID (StashDB UUID, slug, etc.)
 }
 
 // GalleryInfo is the unified result for gallery data from providers.

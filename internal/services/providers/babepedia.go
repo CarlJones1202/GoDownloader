@@ -87,6 +87,9 @@ func (b *Babepedia) parse(body, name, slug string) PersonInfo {
 			imgURL = "https://www.babepedia.com" + imgURL
 		}
 		info.ImageURL = ptrStr(imgURL)
+		if info.ImageURL != nil {
+			info.ImageURLs = []string{*info.ImageURL}
+		}
 	}
 
 	return info

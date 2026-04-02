@@ -10,6 +10,11 @@ import (
 	"github.com/carlj/godownload/internal/models"
 )
 
+// personColumns is the full column list for SELECT queries against people.
+const personColumns = `id, name, aliases, birth_date, nationality,
+	ethnicity, hair_color, eye_color, height, weight, measurements,
+	tattoos, piercings, biography, photos, created_at`
+
 // PeopleFilter holds optional filter parameters for ListPeople.
 type PeopleFilter struct {
 	Search *string // name LIKE
@@ -23,8 +28,7 @@ func (db *DB) ListPeople(ctx context.Context, f PeopleFilter) ([]models.Person, 
 		f.Limit = 50
 	}
 
-	query := `SELECT id, name, aliases, birth_date, nationality, created_at
-	            FROM people WHERE 1=1`
+	query := `SELECT ` + personColumns + ` FROM people WHERE 1=1`
 	args := []any{}
 
 	if f.Search != nil {
@@ -46,8 +50,7 @@ func (db *DB) ListPeople(ctx context.Context, f PeopleFilter) ([]models.Person, 
 func (db *DB) GetPerson(ctx context.Context, id int64) (*models.Person, error) {
 	var p models.Person
 	err := db.GetContext(ctx, &p,
-		`SELECT id, name, aliases, birth_date, nationality, created_at
-		   FROM people WHERE id = ?`, id,
+		`SELECT `+personColumns+` FROM people WHERE id = ?`, id,
 	)
 	if err != nil {
 		if IsNotFound(err) {
@@ -61,8 +64,13 @@ func (db *DB) GetPerson(ctx context.Context, id int64) (*models.Person, error) {
 // CreatePerson inserts a new person and populates ID and CreatedAt.
 func (db *DB) CreatePerson(ctx context.Context, p *models.Person) error {
 	result, err := db.ExecContext(ctx,
-		`INSERT INTO people (name, aliases, birth_date, nationality) VALUES (?, ?, ?, ?)`,
+		`INSERT INTO people (name, aliases, birth_date, nationality,
+		    ethnicity, hair_color, eye_color, height, weight, measurements,
+		    tattoos, piercings, biography, photos)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.Name, p.Aliases, p.BirthDate, p.Nationality,
+		p.Ethnicity, p.HairColor, p.EyeColor, p.Height, p.Weight, p.Measurements,
+		p.Tattoos, p.Piercings, p.Biography, p.Photos,
 	)
 	if err != nil {
 		return fmt.Errorf("creating person: %w", err)
@@ -79,9 +87,17 @@ func (db *DB) CreatePerson(ctx context.Context, p *models.Person) error {
 // UpdatePerson updates mutable fields on an existing person.
 func (db *DB) UpdatePerson(ctx context.Context, p *models.Person) error {
 	_, err := db.ExecContext(ctx,
-		`UPDATE people SET name = ?, aliases = ?, birth_date = ?, nationality = ?
+		`UPDATE people SET
+		    name = ?, aliases = ?, birth_date = ?, nationality = ?,
+		    ethnicity = ?, hair_color = ?, eye_color = ?,
+		    height = ?, weight = ?, measurements = ?,
+		    tattoos = ?, piercings = ?, biography = ?, photos = ?
 		  WHERE id = ?`,
-		p.Name, p.Aliases, p.BirthDate, p.Nationality, p.ID,
+		p.Name, p.Aliases, p.BirthDate, p.Nationality,
+		p.Ethnicity, p.HairColor, p.EyeColor,
+		p.Height, p.Weight, p.Measurements,
+		p.Tattoos, p.Piercings, p.Biography, p.Photos,
+		p.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("updating person %d: %w", p.ID, err)
@@ -228,8 +244,7 @@ func (db *DB) MergePeople(ctx context.Context, keepID int64, mergeIDs []int64) e
 	// Load the keeper.
 	var keeper models.Person
 	if err := tx.GetContext(ctx, &keeper,
-		`SELECT id, name, aliases, birth_date, nationality, created_at
-		   FROM people WHERE id = ?`, keepID,
+		`SELECT `+personColumns+` FROM people WHERE id = ?`, keepID,
 	); err != nil {
 		return fmt.Errorf("loading keeper person %d: %w", keepID, err)
 	}

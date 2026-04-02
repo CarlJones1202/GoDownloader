@@ -210,7 +210,10 @@ func (db *DB) DeleteOrphanedImages(ctx context.Context) (int64, error) {
 func (db *DB) ListGalleryPeople(ctx context.Context, galleryID int64) ([]models.Person, error) {
 	people := []models.Person{}
 	err := db.SelectContext(ctx, &people,
-		`SELECT p.id, p.name, p.aliases, p.birth_date, p.nationality, p.created_at
+		`SELECT p.id, p.name, p.aliases, p.birth_date, p.nationality,
+		        p.ethnicity, p.hair_color, p.eye_color, p.height, p.weight,
+		        p.measurements, p.tattoos, p.piercings, p.biography, p.photos,
+		        p.created_at
 		   FROM people p
 		   JOIN gallery_persons gp ON gp.person_id = p.id
 		  WHERE gp.gallery_id = ?

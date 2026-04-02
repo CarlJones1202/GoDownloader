@@ -102,6 +102,9 @@ func (f *FreeOnes) parse(body, name, slug string) PersonInfo {
 
 	if m := foImageRe.FindStringSubmatch(body); m != nil {
 		info.ImageURL = ptrStr(m[1])
+		if info.ImageURL != nil {
+			info.ImageURLs = []string{*info.ImageURL}
+		}
 	}
 
 	return info

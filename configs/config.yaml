@@ -24,6 +24,7 @@ storage:
   images_dir: "data/images"
   thumbnails_dir: "data/thumbnails"
   videos_dir: "data/videos"
+  person_photos_dir: "data/person_photos"
 
 log:
   level: "info"

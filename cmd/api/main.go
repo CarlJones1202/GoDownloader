@@ -21,11 +21,13 @@ import (
 	"github.com/carlj/godownload/internal/middleware"
 	"github.com/carlj/godownload/internal/services/crawler"
 	"github.com/carlj/godownload/internal/services/linker"
+	"github.com/carlj/godownload/internal/services/personphoto"
 	"github.com/carlj/godownload/internal/services/providers"
 	"github.com/carlj/godownload/internal/services/queue"
 	"github.com/carlj/godownload/internal/services/queue/processors"
 	"github.com/carlj/godownload/internal/services/ripper"
 	ripperproviders "github.com/carlj/godownload/internal/services/ripper/providers"
+	"github.com/carlj/godownload/internal/services/video"
 	"github.com/carlj/godownload/internal/services/vpn"
 	"github.com/carlj/godownload/internal/services/workers"
 	"github.com/carlj/godownload/internal/services/ws"
@@ -74,13 +76,31 @@ func main() {
 	// We use a representative URL to get the right client type.
 	vpnClient := vpnSvc.GetHTTPClient("https://www.metart.com")
 
-	enricher := providers.NewEnricher(httpClient, cfg.Crawler.UserAgent, "", vpnClient)
+	stashDBKey := os.Getenv("STASHDB_API_KEY")
+	if stashDBKey == "" {
+		slog.Warn("STASHDB_API_KEY environment variable not set — StashDB searches will fail (authentication required)")
+	} else {
+		slog.Info("StashDB API key loaded", "key_length", len(stashDBKey))
+	}
+	enricher := providers.NewEnricher(httpClient, cfg.Crawler.UserAgent, stashDBKey, vpnClient)
 
 	thumbWorker := workers.NewThumbnailWorker(db, cfg.Storage.ImagesDir, cfg.Storage.ThumbnailsDir)
 	colorWorker := workers.NewColorWorker(db, cfg.Storage.ImagesDir)
 
-	queueMgr := queue.New(db, cfg.Crawler.Workers, cfg.Crawler.MaxRetries)
-	processors.New(db, ripperReg, *cfg, thumbWorker, colorWorker).Register(queueMgr)
+	// Video ripper registry — separate from image rippers, saves to videos dir.
+	videoReg := video.NewRegistry(cfg.Storage.VideosDir, httpClient, cfg.Crawler.UserAgent)
+	videoReg.Register(video.NewTnaFlixRipper(httpClient, cfg.Crawler.UserAgent))
+	videoReg.Register(video.NewYtDlpRipper("")) // no cookies file for now
+	videoReg.Register(video.NewPMVHavenRipper(httpClient, cfg.Crawler.UserAgent))
+
+	videoWorker := workers.NewVideoWorker(db, cfg.Storage.VideosDir, cfg.Storage.ThumbnailsDir)
+	trickplayWorker := workers.NewTrickplayWorker(db, cfg.Storage.VideosDir, cfg.Storage.ThumbnailsDir)
+
+	dbWriter := database.NewWriter(db)
+	defer dbWriter.Stop()
+
+	queueMgr := queue.New(db, dbWriter, cfg.Crawler.Workers, cfg.Crawler.MaxRetries)
+	processors.New(db, dbWriter, ripperReg, *cfg, thumbWorker, colorWorker, videoReg, videoWorker, trickplayWorker).Register(queueMgr)
 
 	// WebSocket hub for real-time download progress.
 	wsHub := ws.NewHub()
@@ -96,7 +116,7 @@ func main() {
 	// Gallery metadata service — uses VPN-aware client for age-gated provider APIs.
 	metadataSvc := providers.NewGalleryMetadataService(vpnSvc.GetHTTPClient, cfg.Crawler.UserAgent)
 
-	router := buildRouter(db, crawlerSvc, queueMgr, autoLinker, enricher, cfg.Storage, wsHub, metadataSvc)
+	router := buildRouter(db, crawlerSvc, queueMgr, autoLinker, enricher, cfg.Storage, wsHub, metadataSvc, httpClient)
 
 	srv := &http.Server{
 		Addr:         cfg.Addr(),
@@ -134,7 +154,7 @@ func main() {
 }
 
 // buildRouter wires up all routes and returns the configured gin.Engine.
-func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.Manager, al *linker.AutoLinker, enricher *providers.Enricher, storage config.StorageConfig, wsHub *ws.Hub, metadataSvc *providers.GalleryMetadataService) *gin.Engine {
+func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.Manager, al *linker.AutoLinker, enricher *providers.Enricher, storage config.StorageConfig, wsHub *ws.Hub, metadataSvc *providers.GalleryMetadataService, httpClient *http.Client) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.New()
@@ -148,7 +168,8 @@ func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.M
 	handlers.NewGalleryHandler(db, storage, metadataSvc).RegisterRoutes(v1.Group("/galleries"))
 	handlers.NewImageHandler(db, storage).RegisterRoutes(v1.Group("/images"))
 	handlers.NewVideoHandler(db).RegisterRoutes(v1.Group("/videos"))
-	handlers.NewPeopleHandler(db, al, enricher).RegisterRoutes(v1.Group("/people"))
+	photoDownloader := personphoto.NewDownloader(storage.PersonPhotosDir, httpClient, "")
+	handlers.NewPeopleHandler(db, al, enricher, photoDownloader).RegisterRoutes(v1.Group("/people"))
 	handlers.NewAdminHandler(db, crawlerSvc, queueMgr).RegisterRoutes(v1.Group("/admin"))
 
 	// Health check endpoint.
@@ -164,6 +185,7 @@ func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.M
 	r.Static("/data/images", "data/images")
 	r.Static("/data/thumbnails", "data/thumbnails")
 	r.Static("/data/videos", "data/videos")
+	r.Static("/data/person_photos", storage.PersonPhotosDir)
 
 	// Serve the React SPA from web/dist/ when available.
 	// Any request that does not match an API route or a static file is

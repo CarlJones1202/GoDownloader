@@ -270,6 +270,20 @@ func mergePersonInfos(name string, infos []*PersonInfo) PersonInfo {
 		if merged.ImageURL == nil && info.ImageURL != nil {
 			merged.ImageURL = info.ImageURL
 		}
+
+		// Merge ImageURLs from all providers, deduplicating.
+		if len(info.ImageURLs) > 0 {
+			seen := make(map[string]struct{}, len(merged.ImageURLs))
+			for _, u := range merged.ImageURLs {
+				seen[u] = struct{}{}
+			}
+			for _, u := range info.ImageURLs {
+				if _, ok := seen[u]; !ok {
+					merged.ImageURLs = append(merged.ImageURLs, u)
+					seen[u] = struct{}{}
+				}
+			}
+		}
 	}
 
 	return merged

@@ -51,12 +51,22 @@ type Image struct {
 
 // Person represents a performer or model profile.
 type Person struct {
-	ID          int64      `db:"id"          json:"id"`
-	Name        string     `db:"name"        json:"name"`
-	Aliases     *string    `db:"aliases"     json:"aliases,omitempty"`
-	BirthDate   *time.Time `db:"birth_date"  json:"birth_date,omitempty"`
-	Nationality *string    `db:"nationality" json:"nationality,omitempty"`
-	CreatedAt   time.Time  `db:"created_at"  json:"created_at"`
+	ID           int64      `db:"id"           json:"id"`
+	Name         string     `db:"name"         json:"name"`
+	Aliases      *string    `db:"aliases"      json:"aliases,omitempty"`
+	BirthDate    *time.Time `db:"birth_date"   json:"birth_date,omitempty"`
+	Nationality  *string    `db:"nationality"  json:"nationality,omitempty"`
+	Ethnicity    *string    `db:"ethnicity"    json:"ethnicity,omitempty"`
+	HairColor    *string    `db:"hair_color"   json:"hair_color,omitempty"`
+	EyeColor     *string    `db:"eye_color"    json:"eye_color,omitempty"`
+	Height       *string    `db:"height"       json:"height,omitempty"`
+	Weight       *string    `db:"weight"       json:"weight,omitempty"`
+	Measurements *string    `db:"measurements" json:"measurements,omitempty"`
+	Tattoos      *string    `db:"tattoos"      json:"tattoos,omitempty"`
+	Piercings    *string    `db:"piercings"    json:"piercings,omitempty"`
+	Biography    *string    `db:"biography"    json:"biography,omitempty"`
+	Photos       *string    `db:"photos"       json:"photos,omitempty"` // JSON array of local photo paths
+	CreatedAt    time.Time  `db:"created_at"   json:"created_at"`
 }
 
 // PersonIdentifier maps a person to an external provider's identifier (e.g. StashDB ID).

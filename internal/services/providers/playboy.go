@@ -125,6 +125,9 @@ func mapPlayboyModel(model playboyModelResponse) PersonInfo {
 	info.Height = model.Height
 	info.Weight = model.Weight
 	info.ImageURL = model.ImageURL
+	if info.ImageURL != nil {
+		info.ImageURLs = []string{*info.ImageURL}
+	}
 
 	// Build measurements from individual fields.
 	if model.Bust != nil || model.Waist != nil || model.Hips != nil {
