@@ -239,6 +239,8 @@ export function ImagesPage() {
           index={lightboxIndex}
           onClose={() => setLightboxIndex(null)}
           onIndexChange={setLightboxIndex}
+          imageData={displayImages}
+          onToggleFavorite={(id) => favMut.mutate(id)}
         />
       )}
 

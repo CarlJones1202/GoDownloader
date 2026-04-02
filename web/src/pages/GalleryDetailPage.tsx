@@ -47,6 +47,7 @@ export function GalleryDetailPage() {
   // Metadata search state
   const [showMetadataSearch, setShowMetadataSearch] = useState(false);
   const [metadataQuery, setMetadataQuery] = useState('');
+  const [metadataProvider, setMetadataProvider] = useState('');
   const [searchResults, setSearchResults] = useState<GallerySearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [scrapingUrl, setScrapingUrl] = useState<string | null>(null);
@@ -54,6 +55,12 @@ export function GalleryDetailPage() {
   const { data: gallery, isLoading: loadingGallery } = useQuery({
     queryKey: ['gallery', galleryId],
     queryFn: () => galleries.get(galleryId),
+  });
+
+  const { data: metadataProviders } = useQuery({
+    queryKey: ['metadata-providers'],
+    queryFn: () => galleries.metadataProviders(),
+    staleTime: Infinity,
   });
 
   const { data: imageList, isLoading: loadingImages } = useQuery({
@@ -109,6 +116,7 @@ export function GalleryDetailPage() {
   // Metadata search
   const openMetadataSearch = useCallback(() => {
     setMetadataQuery(gallery?.title || '');
+    setMetadataProvider('');
     setSearchResults([]);
     setShowMetadataSearch(true);
   }, [gallery?.title]);
@@ -117,14 +125,18 @@ export function GalleryDetailPage() {
     if (!metadataQuery.trim()) return;
     setIsSearching(true);
     try {
-      const results = await galleries.searchMetadata(galleryId, metadataQuery.trim());
+      const results = await galleries.searchMetadata(
+        galleryId,
+        metadataQuery.trim(),
+        metadataProvider || undefined,
+      );
       setSearchResults(results);
     } catch {
       setSearchResults([]);
     } finally {
       setIsSearching(false);
     }
-  }, [galleryId, metadataQuery]);
+  }, [galleryId, metadataQuery, metadataProvider]);
 
   const applyMetadata = useCallback(
     async (result: GallerySearchResult) => {
@@ -157,6 +169,19 @@ export function GalleryDetailPage() {
         thumbSrc: thumbnailUrl(img.filename),
         width: img.width,
         height: img.height,
+        persistentOverlay: img.is_favorite ? (
+          <div className="absolute bottom-0 left-0 p-2 pointer-events-auto">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                favMut.mutate(img.id);
+              }}
+              className="p-1"
+            >
+              <Heart size={16} className="fill-red-500 text-red-500" />
+            </button>
+          </div>
+        ) : undefined,
         overlay: (
           <div className="flex flex-col justify-end h-full bg-gradient-to-t from-black/60 to-transparent p-2">
             <div className="flex items-center justify-between w-full">
@@ -348,6 +373,8 @@ export function GalleryDetailPage() {
           index={lightboxIndex}
           onClose={() => setLightboxIndex(null)}
           onIndexChange={setLightboxIndex}
+          imageData={imageList}
+          onToggleFavorite={(id) => favMut.mutate(id)}
         />
       )}
 
@@ -377,13 +404,25 @@ export function GalleryDetailPage() {
                   autoFocus
                   onKeyDown={(e) => e.key === 'Enter' && runMetadataSearch()}
                 />
+                <select
+                  value={metadataProvider}
+                  onChange={(e) => setMetadataProvider(e.target.value)}
+                  className="bg-zinc-800 border border-zinc-700 rounded-lg px-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="">All providers</option>
+                  {metadataProviders?.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
                 <Button onClick={runMetadataSearch} disabled={isSearching || !metadataQuery.trim()}>
                   {isSearching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
                   Search
                 </Button>
               </div>
               <p className="text-xs text-zinc-500 mt-2">
-                Searches 12 providers: MetArt, MetArtX, SexArt, LifeErotic, EternalDesire, RylskyArt, Playboy, PlayboyPlus, Vixen, VivThomas, WowGirls, MPLStudios
+                {metadataProvider
+                  ? `Searching: ${metadataProvider}`
+                  : `Searches ${metadataProviders?.length ?? 12} providers`}
               </p>
             </div>
 

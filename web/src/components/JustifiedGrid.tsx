@@ -16,8 +16,10 @@ interface JustifiedItem {
   thumbSrc?: string;
   width?: number;
   height?: number;
-  /** Overlay rendered on top of the image. */
+  /** Overlay rendered on top of the image (visible on hover). */
   overlay?: React.ReactNode;
+  /** Overlay always visible regardless of hover state. */
+  persistentOverlay?: React.ReactNode;
 }
 
 interface JustifiedGridProps {
@@ -119,6 +121,11 @@ export function JustifiedGrid({
                     }
                   }}
                 />
+                {cell.item.persistentOverlay && (
+                  <div className="absolute inset-0 pointer-events-none">
+                    {cell.item.persistentOverlay}
+                  </div>
+                )}
                 {cell.item.overlay && (
                   <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity">
                     {cell.item.overlay}
