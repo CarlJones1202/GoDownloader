@@ -31,11 +31,12 @@ type Processors struct {
 	reg   *ripper.Registry
 	cfg   config.Config
 	thumb *workers.ThumbnailWorker
+	color *workers.ColorWorker
 }
 
 // New creates a Processors instance.
-func New(db *database.DB, reg *ripper.Registry, cfg config.Config, thumb *workers.ThumbnailWorker) *Processors {
-	return &Processors{db: db, reg: reg, cfg: cfg, thumb: thumb}
+func New(db *database.DB, reg *ripper.Registry, cfg config.Config, thumb *workers.ThumbnailWorker, color *workers.ColorWorker) *Processors {
+	return &Processors{db: db, reg: reg, cfg: cfg, thumb: thumb, color: color}
 }
 
 // Register binds all processors to the queue Manager.
@@ -90,6 +91,9 @@ func (p *Processors) processImage(ctx context.Context, item *models.DownloadQueu
 
 		// Generate thumbnail and set as gallery cover (first-image-wins).
 		p.generateThumbnail(ctx, img)
+
+		// Extract dominant colors.
+		p.extractColors(ctx, img)
 	}
 
 	return nil
@@ -196,6 +200,9 @@ func (p *Processors) processGallery(ctx context.Context, item *models.DownloadQu
 
 		// Generate thumbnail and set as gallery cover (first-image-wins).
 		p.generateThumbnail(ctx, img)
+
+		// Extract dominant colors.
+		p.extractColors(ctx, img)
 	}
 
 	slog.Info("processor: gallery processed",
@@ -264,4 +271,14 @@ func thumbnailName(filename string) string {
 	ext := filepath.Ext(filename)
 	base := strings.TrimSuffix(filename, ext)
 	return base + "_thumb.jpg"
+}
+
+// extractColors runs the ColorWorker for a freshly saved image.
+func (p *Processors) extractColors(ctx context.Context, img *models.Image) {
+	if p.color == nil {
+		return
+	}
+	if err := p.color.ExtractForImage(ctx, img); err != nil {
+		slog.Warn("processor: color extraction failed", "image_id", img.ID, "error", err)
+	}
 }

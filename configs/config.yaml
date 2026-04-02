@@ -28,3 +28,16 @@ storage:
 log:
   level: "info"
   format: "text"
+
+wireguard:
+  conf_path: ""          # path to WireGuard .conf file (leave empty to disable)
+  bypass: false          # set true to skip VPN even when configured
+  blocked_domains:       # domains that require VPN routing
+    - metart.com
+    - met-art.com
+    - sexart.com
+    - thelifeerotic.com
+    - eternaldesire.com
+    - playboy.com
+    - femjoy.com
+    - mplstudios.com

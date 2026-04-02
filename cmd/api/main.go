@@ -26,7 +26,9 @@ import (
 	"github.com/carlj/godownload/internal/services/queue/processors"
 	"github.com/carlj/godownload/internal/services/ripper"
 	ripperproviders "github.com/carlj/godownload/internal/services/ripper/providers"
+	"github.com/carlj/godownload/internal/services/vpn"
 	"github.com/carlj/godownload/internal/services/workers"
+	"github.com/carlj/godownload/internal/services/ws"
 	"github.com/carlj/godownload/internal/utils"
 	"github.com/gin-gonic/gin"
 )
@@ -65,18 +67,33 @@ func main() {
 	)
 	ripperproviders.RegisterAll(ripperReg, httpClient, cfg.Crawler.UserAgent)
 
-	enricher := providers.NewEnricher(httpClient, cfg.Crawler.UserAgent, "")
+	// Initialise WireGuard VPN for age-gated provider APIs.
+	vpnSvc := vpn.New(cfg.WireGuard, httpClient)
+
+	// Build a VPN-routed client for providers that need it (MetArt, Playboy, etc.).
+	// We use a representative URL to get the right client type.
+	vpnClient := vpnSvc.GetHTTPClient("https://www.metart.com")
+
+	enricher := providers.NewEnricher(httpClient, cfg.Crawler.UserAgent, "", vpnClient)
 
 	thumbWorker := workers.NewThumbnailWorker(db, cfg.Storage.ImagesDir, cfg.Storage.ThumbnailsDir)
+	colorWorker := workers.NewColorWorker(db, cfg.Storage.ImagesDir)
 
 	queueMgr := queue.New(db, cfg.Crawler.Workers, cfg.Crawler.MaxRetries)
-	processors.New(db, ripperReg, *cfg, thumbWorker).Register(queueMgr)
+	processors.New(db, ripperReg, *cfg, thumbWorker, colorWorker).Register(queueMgr)
+
+	// WebSocket hub for real-time download progress.
+	wsHub := ws.NewHub()
+	go wsHub.Run()
+	statusTracker := ws.NewStatusTracker(wsHub)
+	queueMgr.SetStatusTracker(statusTracker)
+
 	queueMgr.Start()
 	defer queueMgr.Stop()
 
 	autoLinker := linker.New(db)
 
-	router := buildRouter(db, crawlerSvc, queueMgr, autoLinker, enricher, cfg.Storage)
+	router := buildRouter(db, crawlerSvc, queueMgr, autoLinker, enricher, cfg.Storage, wsHub)
 
 	srv := &http.Server{
 		Addr:         cfg.Addr(),
@@ -114,7 +131,7 @@ func main() {
 }
 
 // buildRouter wires up all routes and returns the configured gin.Engine.
-func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.Manager, al *linker.AutoLinker, enricher *providers.Enricher, storage config.StorageConfig) *gin.Engine {
+func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.Manager, al *linker.AutoLinker, enricher *providers.Enricher, storage config.StorageConfig, wsHub *ws.Hub) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.New()
@@ -135,6 +152,9 @@ func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.M
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	// WebSocket endpoint for real-time download progress.
+	r.GET("/ws", wsHub.HandleWebSocket)
 
 	// Serve downloaded media files (images, thumbnails, videos) from the
 	// data/ directory so the frontend can display them via /data/images/...

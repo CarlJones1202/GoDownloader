@@ -196,15 +196,16 @@ func (r *Registry) downloadDirect(ctx context.Context, rawURL string) (Result, e
 		return Result{}, fmt.Errorf("ripper: GET %q returned %d", rawURL, resp.StatusCode)
 	}
 
-	// Derive a filename from the URL path; fall back to a hash-based name.
-	filename := filenameFromURL(rawURL)
+	// Extract extension from URL path for use in hash-based filename.
+	ext := extensionFromURL(rawURL)
+	if ext == "" {
+		ext = ".jpg" // default extension
+	}
 
 	// Ensure the destination directory exists.
 	if err := os.MkdirAll(r.destDir, 0o755); err != nil {
 		return Result{}, fmt.Errorf("ripper: creating dest dir %q: %w", r.destDir, err)
 	}
-
-	destPath := filepath.Join(r.destDir, filename)
 
 	// Write to a temp file first so a partial download never leaves a corrupt file.
 	tmp, err := os.CreateTemp(r.destDir, ".dl-*")
@@ -234,12 +235,16 @@ func (r *Registry) downloadDirect(ctx context.Context, rawURL string) (Result, e
 		return Result{}, fmt.Errorf("ripper: closing temp file: %w", writeErr)
 	}
 
+	// Compute hash and use it as the filename.
+	hash := hex.EncodeToString(hasher.Sum(nil))
+	filename := hash + ext
+	destPath := filepath.Join(r.destDir, filename)
+
 	// Atomic rename so readers never see a partial file.
 	if writeErr = os.Rename(tmpPath, destPath); writeErr != nil {
 		return Result{}, fmt.Errorf("ripper: renaming %q → %q: %w", tmpPath, destPath, writeErr)
 	}
 
-	hash := hex.EncodeToString(hasher.Sum(nil))
 	ct := resp.Header.Get("Content-Type")
 
 	return Result{
@@ -277,4 +282,17 @@ func filenameFromURL(rawURL string) string {
 		}
 	}
 	return sb.String()
+}
+
+// extensionFromURL extracts the file extension from the URL path.
+// Returns empty string if no extension found.
+func extensionFromURL(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+
+	base := filepath.Base(u.Path)
+	ext := filepath.Ext(base)
+	return ext
 }

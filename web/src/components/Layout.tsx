@@ -7,8 +7,15 @@ import {
   Film,
   Users,
   Settings,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useWebSocket } from '@/hooks/useWebSocket';
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -21,6 +28,8 @@ const navItems = [
 ];
 
 export function Layout() {
+  const { status, connected } = useWebSocket();
+
   return (
     <div className="flex h-screen">
       {/* Sidebar */}
@@ -47,6 +56,45 @@ export function Layout() {
             </NavLink>
           ))}
         </nav>
+
+        {/* Queue status bar */}
+        <div className="border-t border-zinc-800 p-3 space-y-2">
+          <div className="flex items-center gap-1.5 text-xs">
+            {connected ? (
+              <Wifi size={12} className="text-emerald-500" />
+            ) : (
+              <WifiOff size={12} className="text-zinc-500" />
+            )}
+            <span className={connected ? 'text-zinc-400' : 'text-zinc-600'}>
+              {connected ? 'Live' : 'Disconnected'}
+            </span>
+          </div>
+
+          {status && (
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+              <div className="flex items-center gap-1 text-zinc-400">
+                <Clock size={11} className="text-zinc-500" />
+                <span>{status.queue.pending} pending</span>
+              </div>
+              <div className="flex items-center gap-1 text-zinc-400">
+                <Loader2 size={11} className={cn(
+                  status.queue.active > 0 ? 'text-blue-400 animate-spin' : 'text-zinc-500'
+                )} />
+                <span>{status.queue.active} active</span>
+              </div>
+              <div className="flex items-center gap-1 text-zinc-400">
+                <CheckCircle2 size={11} className="text-emerald-500" />
+                <span>{status.queue.completed} done</span>
+              </div>
+              <div className="flex items-center gap-1 text-zinc-400">
+                <AlertCircle size={11} className={cn(
+                  status.queue.failed > 0 ? 'text-red-400' : 'text-zinc-500'
+                )} />
+                <span>{status.queue.failed} failed</span>
+              </div>
+            </div>
+          )}
+        </div>
       </aside>
 
       {/* Main content */}

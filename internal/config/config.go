@@ -11,11 +11,12 @@ import (
 
 // Config holds all application configuration.
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	Database DatabaseConfig `yaml:"database"`
-	Crawler  CrawlerConfig  `yaml:"crawler"`
-	Storage  StorageConfig  `yaml:"storage"`
-	Log      LogConfig      `yaml:"log"`
+	Server    ServerConfig    `yaml:"server"`
+	Database  DatabaseConfig  `yaml:"database"`
+	Crawler   CrawlerConfig   `yaml:"crawler"`
+	Storage   StorageConfig   `yaml:"storage"`
+	Log       LogConfig       `yaml:"log"`
+	WireGuard WireGuardConfig `yaml:"wireguard"`
 }
 
 // ServerConfig holds HTTP server settings.
@@ -57,6 +58,17 @@ type StorageConfig struct {
 type LogConfig struct {
 	Level  string `yaml:"level"`
 	Format string `yaml:"format"` // "json" or "text"
+}
+
+// WireGuardConfig holds WireGuard VPN settings for selective domain routing.
+type WireGuardConfig struct {
+	// ConfPath is the path to a standard WireGuard .conf file.
+	ConfPath string `yaml:"conf_path"`
+	// Bypass disables VPN routing even when configured (for testing).
+	Bypass bool `yaml:"bypass"`
+	// BlockedDomains is the list of domains that must be routed through the VPN.
+	// If empty, a sensible default list is used.
+	BlockedDomains []string `yaml:"blocked_domains"`
 }
 
 // Load reads a YAML config file from the given path, applies defaults,

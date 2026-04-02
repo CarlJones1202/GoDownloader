@@ -23,14 +23,21 @@ type Enricher struct {
 }
 
 // NewEnricher creates an Enricher with all provider clients initialised.
-func NewEnricher(httpClient *http.Client, userAgent, stashDBKey string) *Enricher {
+// vpnClient is optional — if non-nil it is used for age-gated providers
+// (MetArt, MetArtX, Playboy); otherwise httpClient is used for everything.
+func NewEnricher(httpClient *http.Client, userAgent, stashDBKey string, vpnClient *http.Client) *Enricher {
+	gated := httpClient
+	if vpnClient != nil {
+		gated = vpnClient
+	}
+
 	return &Enricher{
 		stashDB:   NewStashDB(httpClient, userAgent, stashDBKey),
 		freeones:  NewFreeOnes(httpClient, userAgent),
 		babepedia: NewBabepedia(httpClient, userAgent),
-		metart:    NewMetArt(httpClient, userAgent),
-		metartX:   NewMetArtX(httpClient, userAgent),
-		playboy:   NewPlayboy(httpClient, userAgent),
+		metart:    NewMetArt(gated, userAgent),
+		metartX:   NewMetArtX(gated, userAgent),
+		playboy:   NewPlayboy(gated, userAgent),
 	}
 }
 

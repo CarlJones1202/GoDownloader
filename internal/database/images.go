@@ -24,7 +24,10 @@ type ImageFilter struct {
 
 // ListImages returns a paginated list of images.
 func (db *DB) ListImages(ctx context.Context, f ImageFilter) ([]models.Image, error) {
-	if f.Limit <= 0 {
+	// Use Limit = -1 to get all images (no pagination)
+	if f.Limit < 0 {
+		f.Limit = 1000000 // arbitrarily large, will fit in memory
+	} else if f.Limit == 0 {
 		f.Limit = 50
 	}
 
@@ -104,6 +107,15 @@ func (db *DB) DeleteImage(ctx context.Context, id int64) error {
 	_, err := db.ExecContext(ctx, `DELETE FROM images WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("deleting image %d: %w", id, err)
+	}
+	return nil
+}
+
+// UpdateImageFilename updates the filename for an image.
+func (db *DB) UpdateImageFilename(ctx context.Context, id int64, filename string) error {
+	_, err := db.ExecContext(ctx, `UPDATE images SET filename = ? WHERE id = ?`, filename, id)
+	if err != nil {
+		return fmt.Errorf("updating filename for image %d: %w", id, err)
 	}
 	return nil
 }

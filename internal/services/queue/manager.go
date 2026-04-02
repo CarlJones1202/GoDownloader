@@ -46,6 +46,18 @@ type Manager struct {
 	stopCh chan struct{}
 	wg     sync.WaitGroup
 	once   sync.Once
+
+	// StatusTracker is an optional WebSocket status broadcaster.
+	// If non-nil, queue events are reported to connected clients.
+	statusTracker statusReporter
+}
+
+// statusReporter is the subset of ws.StatusTracker we need, defined here to
+// avoid importing the ws package (keeps the dependency one-directional).
+type statusReporter interface {
+	ItemStarted(id int64, url, queueType string)
+	ItemCompleted(id int64)
+	ItemFailed(id int64)
 }
 
 // New creates a Manager with the given number of workers and max retries.
@@ -62,6 +74,11 @@ func New(db *database.DB, workers, maxRetries int) *Manager {
 // RegisterProcessor associates a queue type with its processor.
 func (m *Manager) RegisterProcessor(queueType models.QueueType, p Processor) {
 	m.processors[string(queueType)] = p
+}
+
+// SetStatusTracker attaches a WebSocket status reporter to the manager.
+func (m *Manager) SetStatusTracker(st statusReporter) {
+	m.statusTracker = st
 }
 
 // Start begins the polling loop. It is non-blocking.
@@ -174,6 +191,11 @@ func (m *Manager) dispatch(item *models.DownloadQueue) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
+	// Notify status tracker that processing started.
+	if m.statusTracker != nil {
+		m.statusTracker.ItemStarted(item.ID, item.URL, item.Type)
+	}
+
 	err := proc.Process(ctx, item)
 
 	// Use a fresh context for status updates — the processing context may
@@ -184,6 +206,9 @@ func (m *Manager) dispatch(item *models.DownloadQueue) {
 	if err == nil {
 		slog.Info("queue: item completed", "id", item.ID, "type", item.Type)
 		_ = m.db.UpdateQueueStatus(statusCtx, item.ID, models.QueueStatusCompleted, nil)
+		if m.statusTracker != nil {
+			m.statusTracker.ItemCompleted(item.ID)
+		}
 		return
 	}
 
@@ -198,6 +223,9 @@ func (m *Manager) dispatch(item *models.DownloadQueue) {
 	if item.RetryCount >= m.maxRetries {
 		msg := err.Error()
 		_ = m.db.UpdateQueueStatus(statusCtx, item.ID, models.QueueStatusFailed, &msg)
+		if m.statusTracker != nil {
+			m.statusTracker.ItemFailed(item.ID)
+		}
 		return
 	}
 
