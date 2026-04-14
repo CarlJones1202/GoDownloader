@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
@@ -51,10 +52,22 @@ type batchCreateRequest struct {
 
 // batchCreate accepts a JSON array of objects and creates sources in bulk.
 func (h *SourceHandler) batchCreate(c *gin.Context) {
-	var req []batchCreateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		respondError(c, http.StatusBadRequest, err.Error())
+	body, err := c.GetRawData()
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "failed to read request body")
 		return
+	}
+
+	var req []batchCreateRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		var wrapper struct {
+			Data []batchCreateRequest `json:"data"`
+		}
+		if err2 := json.Unmarshal(body, &wrapper); err2 != nil {
+			respondError(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		req = wrapper.Data
 	}
 
 	results := make([]gin.H, 0, len(req))

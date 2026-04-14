@@ -16,7 +16,7 @@ import { usePagination } from '@/hooks/usePagination';
 export function GalleriesPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
-  const { page, limit, prevPage, nextPage, resetPage } = usePagination({ limit: 50 });
+  const { page, offset, limit, prevPage, nextPage, resetPage } = usePagination({ limit: 50 });
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   const { data: galleryList, isLoading } = useQuery({
@@ -25,6 +25,7 @@ export function GalleriesPage() {
       galleries.list({
         search: search || undefined,
         limit,
+        offset,
       }),
   });
 
