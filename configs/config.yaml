@@ -20,6 +20,9 @@ crawler:
   user_agent: "GoDownload/1.0"
   crawl_interval: 6h
 
+providers:
+  stashdb_api_key: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiJiZjk2MmEwNS02MTkyLTQ0M2EtOTcwMy1kZjgxN2JiNTdjNDEiLCJzdWIiOiJBUElLZXkiLCJpYXQiOjE2NTUyNDEwNDV9.ugc44BJVt7NUoX46jiWPpP1_bDxyGT41we4l5T6V3iU"  # set your StashDB API key here (optional)
+
 storage:
   images_dir: "data/images"
   thumbnails_dir: "data/thumbnails"

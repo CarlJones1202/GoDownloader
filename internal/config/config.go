@@ -14,9 +14,15 @@ type Config struct {
 	Server    ServerConfig    `yaml:"server"`
 	Database  DatabaseConfig  `yaml:"database"`
 	Crawler   CrawlerConfig   `yaml:"crawler"`
+	Providers ProvidersConfig `yaml:"providers"`
 	Storage   StorageConfig   `yaml:"storage"`
 	Log       LogConfig       `yaml:"log"`
 	WireGuard WireGuardConfig `yaml:"wireguard"`
+}
+
+// ProvidersConfig holds API keys and provider-specific settings.
+type ProvidersConfig struct {
+	StashDBAPIKey string `yaml:"stashdb_api_key"`
 }
 
 // ServerConfig holds HTTP server settings.
@@ -126,6 +132,9 @@ func defaults() *Config {
 			ThumbnailsDir:   "data/thumbnails",
 			VideosDir:       "data/videos",
 			PersonPhotosDir: "data/person_photos",
+		},
+		Providers: ProvidersConfig{
+			StashDBAPIKey: "",
 		},
 		Log: LogConfig{
 			Level:  "info",

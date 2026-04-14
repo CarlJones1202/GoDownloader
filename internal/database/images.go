@@ -3,11 +3,14 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/carlj/godownload/internal/models"
 )
@@ -62,10 +65,6 @@ func (db *DB) ListImages(ctx context.Context, f ImageFilter) ([]models.Image, er
 	            WHERE 1=1`
 	args := []any{}
 
-	if f.SortBy == SortByRandom {
-		args = append(args, f.RandomSeed)
-	}
-
 	if f.GalleryID != nil {
 		query += " AND gallery_id = ?"
 		args = append(args, *f.GalleryID)
@@ -87,6 +86,135 @@ func (db *DB) ListImages(ctx context.Context, f ImageFilter) ([]models.Image, er
 		return nil, fmt.Errorf("listing images: %w", err)
 	}
 	return images, nil
+}
+
+// GetImage retrieves a single image by ID.
+func (db *DB) GetImage(ctx context.Context, id int64) (*models.Image, error) {
+	var img models.Image
+	err := db.GetContext(ctx, &img,
+		`SELECT id, gallery_id, filename, original_url, width, height,
+		        duration_seconds, file_hash, dominant_colors,
+		        is_video, vr_mode, is_favorite, created_at
+		   FROM images WHERE id = ?`, id,
+	)
+	if err != nil {
+		if IsNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("getting image %d: %w", id, err)
+	}
+	return &img, nil
+}
+
+// CreateImage inserts a new image record and populates ID and CreatedAt.
+func (db *DB) CreateImage(ctx context.Context, img *models.Image) error {
+	var result sql.Result
+	var err error
+	for attempt := 0; attempt < 5; attempt++ {
+		result, err = db.ExecContext(ctx,
+			`INSERT INTO images
+			   (gallery_id, filename, original_url, width, height, duration_seconds,
+			    file_hash, dominant_colors, is_video, vr_mode, is_favorite)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			img.GalleryID, img.Filename, img.OriginalURL,
+			img.Width, img.Height, img.DurationSeconds,
+			img.FileHash, img.DominantColors,
+			img.IsVideo, img.VRMode, img.IsFavorite,
+		)
+		if err == nil {
+			break
+		}
+		// Retry on locked database
+		if !strings.Contains(err.Error(), "database is locked") {
+			break
+		}
+		slog.Warn("database: CreateImage retrying", "attempt", attempt+1, "error", err)
+		time.Sleep(time.Duration(attempt*100) * time.Millisecond)
+	}
+	if err != nil {
+		return fmt.Errorf("creating image: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("getting image id: %w", err)
+	}
+	img.ID = id
+	img.CreatedAt = time.Now().UTC()
+	return nil
+}
+
+// DeleteImage removes an image by ID.
+func (db *DB) DeleteImage(ctx context.Context, id int64) error {
+	_, err := db.ExecContext(ctx, `DELETE FROM images WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("deleting image %d: %w", id, err)
+	}
+	return nil
+}
+
+// UpdateImageFilename updates the filename for an image.
+func (db *DB) UpdateImageFilename(ctx context.Context, id int64, filename string) error {
+	_, err := db.ExecContext(ctx, `UPDATE images SET filename = ? WHERE id = ?`, filename, id)
+	if err != nil {
+		return fmt.Errorf("updating filename for image %d: %w", id, err)
+	}
+	return nil
+}
+
+// UpdateImageVideoMeta sets the width, height, and duration for a video image record.
+func (db *DB) UpdateImageVideoMeta(ctx context.Context, id int64, width, height, durationSeconds int) error {
+	_, err := db.ExecContext(ctx,
+		`UPDATE images SET width = ?, height = ?, duration_seconds = ? WHERE id = ?`,
+		width, height, durationSeconds, id,
+	)
+	if err != nil {
+		return fmt.Errorf("updating video metadata for image %d: %w", id, err)
+	}
+	return nil
+}
+
+// ToggleFavorite flips is_favorite for the given image and returns the new state.
+func (db *DB) ToggleFavorite(ctx context.Context, id int64) (bool, error) {
+	_, err := db.ExecContext(ctx,
+		`UPDATE images SET is_favorite = NOT is_favorite WHERE id = ?`, id,
+	)
+	if err != nil {
+		return false, fmt.Errorf("toggling favorite on image %d: %w", id, err)
+	}
+
+	var isFavorite bool
+	if err := db.GetContext(ctx, &isFavorite,
+		`SELECT is_favorite FROM images WHERE id = ?`, id,
+	); err != nil {
+		return false, fmt.Errorf("reading favorite state for image %d: %w", id, err)
+	}
+
+	return isFavorite, nil
+}
+
+// CountImages returns the total number of images matching a filter (ignoring Limit/Offset).
+func (db *DB) CountImages(ctx context.Context, f ImageFilter) (int64, error) {
+	query := `SELECT COUNT(*) FROM images WHERE 1=1`
+	args := []any{}
+
+	if f.GalleryID != nil {
+		query += " AND gallery_id = ?"
+		args = append(args, *f.GalleryID)
+	}
+	if f.IsVideo != nil {
+		query += " AND is_video = ?"
+		args = append(args, *f.IsVideo)
+	}
+	if f.IsFavorite != nil {
+		query += " AND is_favorite = ?"
+		args = append(args, *f.IsFavorite)
+	}
+
+	var count int64
+	if err := db.GetContext(ctx, &count, query, args...); err != nil {
+		return 0, fmt.Errorf("counting images: %w", err)
+	}
+	return count, nil
 }
 
 // ColorSearchResult pairs an image with its distance from the search color.

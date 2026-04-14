@@ -19,6 +19,7 @@ import (
 	"github.com/carlj/godownload/internal/database"
 	"github.com/carlj/godownload/internal/handlers"
 	"github.com/carlj/godownload/internal/middleware"
+	"github.com/carlj/godownload/internal/models"
 	"github.com/carlj/godownload/internal/services/crawler"
 	"github.com/carlj/godownload/internal/services/linker"
 	"github.com/carlj/godownload/internal/services/personphoto"
@@ -76,11 +77,11 @@ func main() {
 	// We use a representative URL to get the right client type.
 	vpnClient := vpnSvc.GetHTTPClient("https://www.metart.com")
 
-	stashDBKey := os.Getenv("STASHDB_API_KEY")
+	stashDBKey := cfg.Providers.StashDBAPIKey
 	if stashDBKey == "" {
-		slog.Warn("STASHDB_API_KEY environment variable not set — StashDB searches will fail (authentication required)")
+		slog.Warn("config.providers.stashdb_api_key not set — StashDB searches will fail (authentication required)")
 	} else {
-		slog.Info("StashDB API key loaded", "key_length", len(stashDBKey))
+		slog.Info("StashDB API key loaded from config", "key_length", len(stashDBKey))
 	}
 	enricher := providers.NewEnricher(httpClient, cfg.Crawler.UserAgent, stashDBKey, vpnClient)
 
@@ -101,6 +102,65 @@ func main() {
 
 	queueMgr := queue.New(db, dbWriter, cfg.Crawler.Workers, cfg.Crawler.MaxRetries)
 	processors.New(db, dbWriter, ripperReg, *cfg, thumbWorker, colorWorker, videoReg, videoWorker, trickplayWorker).Register(queueMgr)
+
+	// --- Scan for missing images and enqueue re-download jobs ---
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	images, err := db.ListImages(ctx, database.ImageFilter{Limit: -1})
+	if err != nil {
+		slog.Error("startup: failed to list images for missing file check", "error", err)
+	} else {
+		missingCount := 0
+		queueFailures := 0
+		// Partition missing images into favorites and non-favorites
+		var missingFavorites, missingRegulars []models.Image
+		for _, img := range images {
+			if img.Filename == "" {
+				continue
+			}
+			imgPath := filepath.Join(cfg.Storage.ImagesDir, img.Filename)
+			if _, err := os.Stat(imgPath); os.IsNotExist(err) {
+				if img.IsFavorite {
+					missingFavorites = append(missingFavorites, img)
+				} else {
+					missingRegulars = append(missingRegulars, img)
+				}
+			}
+		}
+
+		enqueueSet := func(imgs []models.Image, priorityLog bool) {
+			for _, img := range imgs {
+				if img.OriginalURL == nil || *img.OriginalURL == "" {
+					slog.Warn("image missing but has no OriginalURL, cannot requeue", "image_id", img.ID, "file", img.Filename)
+					continue
+				}
+				job := &models.DownloadQueue{
+					Type:     "image",
+					URL:      *img.OriginalURL,
+					TargetID: &img.ID,
+				}
+				err := db.EnqueueItem(ctx, job)
+				if err != nil {
+					if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "duplicate") {
+						slog.Info("already queued for download (skipped duplicate)", "image_id", img.ID, "file", img.Filename, "priority_favorite", priorityLog)
+					} else {
+						slog.Error("failed to enqueue missing image for download", "image_id", img.ID, "error", err, "priority_favorite", priorityLog)
+						queueFailures++
+					}
+				} else {
+					slog.Info("requeued missing image for download", "image_id", img.ID, "file", img.Filename, "priority_favorite", priorityLog)
+					missingCount++
+				}
+			}
+		}
+		// Enqueue favorites first, then others
+		enqueueSet(missingFavorites, true)
+		enqueueSet(missingRegulars, false)
+
+		slog.Info("missing image scan complete", "missing_found", missingCount, "queue_failures", queueFailures)
+	}
+
+	// --- End missing image scan ---
 
 	// WebSocket hub for real-time download progress.
 	wsHub := ws.NewHub()
@@ -142,7 +202,7 @@ func main() {
 
 	slog.Info("shutting down server...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
