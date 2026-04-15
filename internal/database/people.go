@@ -116,6 +116,9 @@ func (db *DB) DeletePerson(ctx context.Context, id int64) error {
 
 // LinkGallery creates a gallery_persons association.
 func (db *DB) LinkGallery(ctx context.Context, personID, galleryID int64) error {
+	// Remove from unlinked blacklist if it exists (manual link overrides blacklist)
+	_, _ = db.ExecContext(ctx, `DELETE FROM unlinked_gallery_persons WHERE gallery_id = ? AND person_id = ?`, galleryID, personID)
+
 	_, err := db.ExecContext(ctx,
 		`INSERT OR IGNORE INTO gallery_persons (gallery_id, person_id) VALUES (?, ?)`,
 		galleryID, personID,
@@ -126,7 +129,7 @@ func (db *DB) LinkGallery(ctx context.Context, personID, galleryID int64) error 
 	return nil
 }
 
-// UnlinkGallery removes a gallery_persons association.
+// UnlinkGallery removes a gallery_persons association and records it in the blacklist.
 func (db *DB) UnlinkGallery(ctx context.Context, personID, galleryID int64) error {
 	_, err := db.ExecContext(ctx,
 		`DELETE FROM gallery_persons WHERE gallery_id = ? AND person_id = ?`,
@@ -135,6 +138,13 @@ func (db *DB) UnlinkGallery(ctx context.Context, personID, galleryID int64) erro
 	if err != nil {
 		return fmt.Errorf("unlinking gallery %d from person %d: %w", galleryID, personID, err)
 	}
+
+	// Record unlinking to prevent auto-relinking
+	_, _ = db.ExecContext(ctx,
+		`INSERT OR IGNORE INTO unlinked_gallery_persons (gallery_id, person_id) VALUES (?, ?)`,
+		galleryID, personID,
+	)
+
 	return nil
 }
 
@@ -216,7 +226,7 @@ func (db *DB) FindGalleriesByTitleMatch(ctx context.Context, name string) ([]int
 		"%"+name+"%",
 	)
 	if err != nil {
-		return nil, fmt.Errorf("finding galleries matching %q: %w", name, err)
+		return nil, fmt.Errorf("finding galleries matching title %q: %w", name, err)
 	}
 
 	ids := make([]int64, len(rows))
@@ -224,6 +234,37 @@ func (db *DB) FindGalleriesByTitleMatch(ctx context.Context, name string) ([]int
 		ids[i] = r.ID
 	}
 	return ids, nil
+}
+
+// FindGalleriesBySourceURLMatch returns gallery IDs whose source_url contains the
+// given pattern (case-insensitive). Used for auto-linking.
+func (db *DB) FindGalleriesBySourceURLMatch(ctx context.Context, pattern string) ([]int64, error) {
+	rows := []struct {
+		ID int64 `db:"id"`
+	}{}
+	err := db.SelectContext(ctx, &rows,
+		`SELECT id FROM galleries WHERE source_url LIKE ? COLLATE NOCASE`,
+		"%"+pattern+"%",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("finding galleries matching source_url %q: %w", pattern, err)
+	}
+
+	ids := make([]int64, len(rows))
+	for i, r := range rows {
+		ids[i] = r.ID
+	}
+	return ids, nil
+}
+
+// IsGalleryUnlinked checks if a person was specifically unlinked from a gallery.
+func (db *DB) IsGalleryUnlinked(ctx context.Context, personID, galleryID int64) (bool, error) {
+	var count int
+	err := db.GetContext(ctx, &count, `SELECT COUNT(*) FROM unlinked_gallery_persons WHERE gallery_id = ? AND person_id = ?`, galleryID, personID)
+	if err != nil {
+		return false, fmt.Errorf("checking unlinked status: %w", err)
+	}
+	return count > 0, nil
 }
 
 // MergePeople merges one or more people into a single "keep" person.

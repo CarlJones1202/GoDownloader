@@ -8,6 +8,7 @@ import (
 	"github.com/carlj/godownload/internal/database"
 	"github.com/carlj/godownload/internal/models"
 	"github.com/carlj/godownload/internal/services/crawler"
+	"github.com/carlj/godownload/internal/services/linker"
 	"github.com/carlj/godownload/internal/services/queue"
 	"github.com/gin-gonic/gin"
 )
@@ -17,11 +18,12 @@ type AdminHandler struct {
 	db       *database.DB
 	crawler  *crawler.Crawler
 	queueMgr *queue.Manager
+	linker   *linker.AutoLinker
 }
 
 // NewAdminHandler creates an AdminHandler.
-func NewAdminHandler(db *database.DB, c *crawler.Crawler, qm *queue.Manager) *AdminHandler {
-	return &AdminHandler{db: db, crawler: c, queueMgr: qm}
+func NewAdminHandler(db *database.DB, c *crawler.Crawler, qm *queue.Manager, al *linker.AutoLinker) *AdminHandler {
+	return &AdminHandler{db: db, crawler: c, queueMgr: qm, linker: al}
 }
 
 // RegisterRoutes registers all admin routes on the given group.
@@ -37,6 +39,7 @@ func (h *AdminHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/sources/:id/recrawl", h.recrawlSource)
 	rg.POST("/images/redownload", h.bulkRedownload)
 	rg.POST("/galleries/cleanup", h.galleryCleanup)
+	rg.POST("/galleries/autolink", h.autolinkGalleries)
 }
 
 // stats returns aggregate statistics about the system.
@@ -308,6 +311,21 @@ func (h *AdminHandler) galleryCleanup(c *gin.Context) {
 	respondOK(c, gin.H{
 		"dry_run": false,
 		"deleted": deleted,
+	})
+}
+
+// autolinkGalleries triggers a global scan to link galleries to people based on
+// name matches in titles and source URLs.
+func (h *AdminHandler) autolinkGalleries(c *gin.Context) {
+	linked, err := h.linker.ScanAllGalleries(c.Request.Context())
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "autolink failed: "+err.Error())
+		return
+	}
+
+	respondOK(c, gin.H{
+		"message": "autolink scan complete",
+		"linked":  linked,
 	})
 }
 

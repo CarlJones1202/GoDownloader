@@ -230,7 +230,7 @@ func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.M
 	handlers.NewVideoHandler(db).RegisterRoutes(v1.Group("/videos"))
 	photoDownloader := personphoto.NewDownloader(storage.PersonPhotosDir, httpClient, "")
 	handlers.NewPeopleHandler(db, al, enricher, photoDownloader).RegisterRoutes(v1.Group("/people"))
-	handlers.NewAdminHandler(db, crawlerSvc, queueMgr).RegisterRoutes(v1.Group("/admin"))
+	handlers.NewAdminHandler(db, crawlerSvc, queueMgr, al).RegisterRoutes(v1.Group("/admin"))
 
 	// Health check endpoint.
 	r.GET("/health", func(c *gin.Context) {

@@ -1,11 +1,12 @@
 // Package linker provides automatic gallery-to-person linking.
 // When a person is created or aliases are updated, the linker searches
-// gallery titles for name matches and creates gallery_persons links.
+// gallery titles and source URLs for name matches and creates gallery_persons links.
 package linker
 
 import (
 	"context"
 	"log/slog"
+	"net/url"
 	"strings"
 
 	"github.com/carlj/godownload/internal/database"
@@ -22,33 +23,51 @@ func New(db *database.DB) *AutoLinker {
 	return &AutoLinker{db: db}
 }
 
-// LinkPerson searches gallery titles for the person's name and aliases,
+// LinkPerson searches gallery titles and source URLs for the person's name and aliases,
 // and creates gallery_persons records for any matches.
 // It returns the number of new links created.
 func (al *AutoLinker) LinkPerson(ctx context.Context, person *models.Person) (int, error) {
-	names := al.collectNames(person)
-	if len(names) == 0 {
+	searchTerms := al.collectSearchTerms(person)
+	if len(searchTerms) == 0 {
 		return 0, nil
 	}
 
 	linked := 0
-	seen := make(map[int64]bool)
+	seenGalleries := make(map[int64]bool)
 
-	for _, name := range names {
-		galleryIDs, err := al.db.FindGalleriesByTitleMatch(ctx, name)
+	for _, term := range searchTerms {
+		// Search in Title
+		titleGIDs, err := al.db.FindGalleriesByTitleMatch(ctx, term)
 		if err != nil {
-			slog.Warn("autolink: searching galleries", "name", name, "error", err)
-			continue
+			slog.Warn("autolink: error searching titles", "term", term, "error", err)
 		}
 
-		for _, gid := range galleryIDs {
-			if seen[gid] {
+		// Search in SourceURL
+		urlGIDs, err := al.db.FindGalleriesBySourceURLMatch(ctx, term)
+		if err != nil {
+			slog.Warn("autolink: error searching source urls", "term", term, "error", err)
+		}
+
+		allGIDs := append(titleGIDs, urlGIDs...)
+
+		for _, gid := range allGIDs {
+			if seenGalleries[gid] {
 				continue
 			}
-			seen[gid] = true
+			seenGalleries[gid] = true
+
+			// Skip if manually unlinked
+			unlinked, err := al.db.IsGalleryUnlinked(ctx, person.ID, gid)
+			if err != nil {
+				slog.Warn("autolink: error checking unlinked status", "person_id", person.ID, "gallery_id", gid, "error", err)
+				continue
+			}
+			if unlinked {
+				continue
+			}
 
 			if err := al.db.LinkGallery(ctx, person.ID, gid); err != nil {
-				slog.Warn("autolink: linking gallery",
+				slog.Warn("autolink: error linking gallery",
 					"person_id", person.ID,
 					"gallery_id", gid,
 					"error", err,
@@ -70,8 +89,29 @@ func (al *AutoLinker) LinkPerson(ctx context.Context, person *models.Person) (in
 	return linked, nil
 }
 
-// collectNames returns the person's name plus all aliases as a slice.
-func (al *AutoLinker) collectNames(person *models.Person) []string {
+// ScanAllGalleries iterates through all people and attempts to link them to galleries.
+func (al *AutoLinker) ScanAllGalleries(ctx context.Context) (int, error) {
+	people, err := al.db.ListPeople(ctx, database.PeopleFilter{Limit: -1})
+	if err != nil {
+		return 0, err
+	}
+
+	totalLinked := 0
+	for _, p := range people {
+		linked, err := al.LinkPerson(ctx, &p)
+		if err != nil {
+			slog.Error("autolink: scan failed for person", "person_id", p.ID, "error", err)
+			continue
+		}
+		totalLinked += linked
+	}
+
+	return totalLinked, nil
+}
+
+// collectSearchTerms returns a list of names/aliases and their common variations
+// and URL-encoded forms for searching.
+func (al *AutoLinker) collectSearchTerms(person *models.Person) []string {
 	names := []string{person.Name}
 
 	if person.Aliases != nil && *person.Aliases != "" {
@@ -83,5 +123,64 @@ func (al *AutoLinker) collectNames(person *models.Person) []string {
 		}
 	}
 
-	return names
+	uniqueTerms := make(map[string]bool)
+	for _, n := range names {
+		// Base name
+		n = strings.TrimSpace(n)
+		if n == "" {
+			continue
+		}
+		uniqueTerms[n] = true
+
+		// "First Last" <-> "Last, First" variations
+		if strings.Contains(n, " ") && !strings.Contains(n, ",") {
+			// Assume "First Last" -> generate "Last, First"
+			parts := strings.Fields(n)
+			if len(parts) >= 2 {
+				last := parts[len(parts)-1]
+				firsts := strings.Join(parts[:len(parts)-1], " ")
+				variant := last + ", " + firsts
+				uniqueTerms[variant] = true
+			}
+		} else if strings.Contains(n, ",") {
+			// Assume "Last, First" -> generate "First Last"
+			parts := strings.SplitN(n, ",", 2)
+			if len(parts) == 2 {
+				last := strings.TrimSpace(parts[0])
+				first := strings.TrimSpace(parts[1])
+				variant := first + " " + last
+				uniqueTerms[variant] = true
+			}
+		}
+	}
+
+	// Add URL-encoded versions
+	finalTerms := make([]string, 0, len(uniqueTerms)*2)
+	for term := range uniqueTerms {
+		finalTerms = append(finalTerms, term)
+
+		// URL encoded (space -> %20, comma -> %2C)
+		encoded := url.QueryEscape(term)
+		if encoded != term {
+			finalTerms = append(finalTerms, encoded)
+		}
+
+		// Some URLs use + for spaces instead of %20
+		if strings.Contains(term, " ") {
+			plus := strings.ReplaceAll(term, " ", "+")
+			finalTerms = append(finalTerms, plus)
+		}
+	}
+
+	// Final deduplication
+	dedupMap := make(map[string]bool)
+	result := make([]string, 0, len(finalTerms))
+	for _, t := range finalTerms {
+		if !dedupMap[t] {
+			dedupMap[t] = true
+			result = append(result, t)
+		}
+	}
+
+	return result
 }
