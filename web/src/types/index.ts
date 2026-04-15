@@ -60,6 +60,7 @@ export interface Person {
   biography?: string;
   photos?: string; // JSON array of local photo paths
   created_at: string;
+  gallery_count?: number;
 }
 
 export interface PersonIdentifier {

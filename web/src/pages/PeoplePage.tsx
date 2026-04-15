@@ -38,6 +38,7 @@ function ProfileTile({ name, photo }: { name: string; photo?: string }) {
 }
 
 export function PeoplePage() {
+  const [editMode, setEditMode] = useState(false);
   const queryClient = useQueryClient();
   const { page, offset, limit, prevPage, nextPage, resetPage } = usePagination({ limit: 24 });
   const [search, setSearch] = useState('');
@@ -134,6 +135,9 @@ export function PeoplePage() {
         <Button onClick={() => setShowCreate(!showCreate)}>
           <Plus size={14} /> Add Person
         </Button>
+        <Button variant={editMode ? "primary" : "secondary"} onClick={() => setEditMode(!editMode)}>
+          {editMode ? "Done" : "Edit"}
+        </Button>
       </PageHeader>
 
       <div className="mb-6 rounded-[2rem] border border-white/8 bg-white/5 p-4">
@@ -213,69 +217,70 @@ export function PeoplePage() {
         <EmptyState message="No people found." />
       ) : (
         <>
-          <div className="flex items-center gap-2 mb-3">
-            <input
-              type="checkbox"
-              checked={personList.length > 0 && selected.size === personList.length}
-              onChange={toggleSelectAll}
-              className="rounded border-zinc-600 bg-zinc-800 text-blue-500"
-            />
-            <span className="text-xs text-zinc-500">Select page</span>
-          </div>
+          {editMode && (
+  <div className="flex items-center gap-2 mb-3">
+    <input
+      type="checkbox"
+      checked={personList.length > 0 && selected.size === personList.length}
+      onChange={toggleSelectAll}
+      className="rounded border-zinc-600 bg-zinc-800 text-blue-500"
+    />
+    <span className="text-xs text-zinc-500">Select page</span>
+  </div>
+)}
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {personList.map((p) => {
-              const photo = parsePhotos(p.photos)[0];
-              return (
-                <Card key={p.id} className="group overflow-hidden rounded-[2rem] border-white/8 bg-white/5 p-0">
-                  <Link to={`/people/${p.id}`} className="block">
-                    <div className="relative aspect-[4/5] overflow-hidden">
-                      <ProfileTile name={p.name} photo={photo} />
-                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent p-4 pt-12">
-                        <div className="flex items-end justify-between gap-3">
-                          <div className="min-w-0">
-                            <h3 className="text-xl font-semibold text-white line-clamp-1">{p.name}</h3>
-                            <p className="mt-1 text-xs text-white/70">Updated {formatDate(p.created_at)}</p>
-                          </div>
-                          <div className="rounded-full bg-white/10 p-2 text-white/70">
-                            <ChevronRight size={14} />
-                          </div>
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {p.nationality && <Badge>{p.nationality}</Badge>}
-                          {p.ethnicity && <Badge variant="info">{p.ethnicity}</Badge>}
-                          {p.height && <Badge variant="default">{p.height}</Badge>}
-                        </div>
-                      </div>
-                      <div className="absolute left-3 top-3">
-                        <input
-                          type="checkbox"
-                          checked={selected.has(p.id)}
-                          onChange={() => toggleSelect(p.id)}
-                          className="h-4 w-4 rounded border-white/30 bg-black/30 text-blue-500"
-                        />
-                      </div>
-                    </div>
-                  </Link>
-
-                  <div className="p-4">
-                    <p className="text-sm text-zinc-300 line-clamp-2">
-                      {p.biography || (p.aliases ? `aka ${p.aliases}` : 'No bio available yet.')}
-                    </p>
-
-                    <div className="mt-4 flex items-center justify-between gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate(p.id)}>
-                        <Trash2 size={14} /> Delete
-                      </Button>
-                      <Button size="sm" onClick={() => toggleSelect(p.id)}>
-                        {selected.has(p.id) ? 'Unselect' : 'Select'}
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
+<div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+{personList.map((p) => {
+  const photo = parsePhotos(p.photos)[0];
+  if (editMode) {
+    return (
+      <Card key={p.id} className="group overflow-hidden rounded-lg bg-white/5 person-card-flat">
+        <div className="flex items-center p-2">
+          <input
+            type="checkbox"
+            checked={selected.has(p.id)}
+            onChange={() => toggleSelect(p.id)}
+            className="rounded border-zinc-600 bg-zinc-800 text-blue-500 mr-2"
+          />
+          <h3 className="text-sm font-medium text-white line-clamp-1">{p.name}</h3>
+        </div>
+        <div className="relative aspect-[4/5] overflow-hidden">
+          <ProfileTile name={p.name} photo={photo} />
+        </div>
+        <div className="flex flex-col items-start p-2 pt-0">
+          {p.aliases && (
+            <span className="block text-[10px] text-zinc-400 line-clamp-1 mb-1">{p.aliases.split(',').slice(0,3).join(', ')}{p.aliases.split(',').length > 3 && '…'}</span>
+          )}
+          <span className="block text-[10px] text-zinc-500 mt-auto">
+            {typeof p.gallery_count === "number" ?
+              (p.gallery_count === 1 ? '1 gallery' : `${p.gallery_count} galleries`) :
+              'No galleries'}
+          </span>
+        </div>
+      </Card>
+    );
+  } else {
+    return (
+      <Link to={`/people/${p.id}`} key={p.id} className="group overflow-hidden rounded-lg bg-white/5 person-card-flat block">
+        <div className="relative aspect-[4/5] overflow-hidden">
+          <ProfileTile name={p.name} photo={photo} />
+        </div>
+        <div className="flex flex-col items-start p-2">
+          <h3 className="text-sm font-medium text-white line-clamp-1 mb-0.5">{p.name}</h3>
+          {p.aliases && (
+            <span className="block text-[10px] text-zinc-400 line-clamp-1 mb-1">{p.aliases.split(',').slice(0,3).join(', ')}{p.aliases.split(',').length > 3 && '…'}</span>
+          )}
+          <span className="block text-[10px] text-zinc-500 mt-auto">
+            {typeof p.gallery_count === "number" ?
+              (p.gallery_count === 1 ? '1 gallery' : `${p.gallery_count} galleries`) :
+              'No galleries'}
+          </span>
+        </div>
+      </Link>
+    );
+  }
+})}
+</div>
 
           <Pagination page={page} hasMore={personList.length === limit} onPrev={prevPage} onNext={nextPage} />
         </>

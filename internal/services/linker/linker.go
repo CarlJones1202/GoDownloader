@@ -109,6 +109,74 @@ func (al *AutoLinker) ScanAllGalleries(ctx context.Context) (int, error) {
 	return totalLinked, nil
 }
 
+// LinkGallery finds all people whose name or aliases match the gallery title
+// or source URL and creates links for them.
+func (al *AutoLinker) LinkGallery(ctx context.Context, gallery *models.Gallery) (int, error) {
+	if gallery == nil {
+		return 0, nil
+	}
+
+	people, err := al.db.ListPeople(ctx, database.PeopleFilter{Limit: -1})
+	if err != nil {
+		return 0, err
+	}
+
+	linked := 0
+	for _, p := range people {
+		searchTerms := al.collectSearchTerms(&p)
+
+		match := false
+		for _, term := range searchTerms {
+			// Check Title
+			if gallery.Title != nil && strings.Contains(strings.ToLower(*gallery.Title), strings.ToLower(term)) {
+				match = true
+				break
+			}
+			// Check SourceURL
+			if gallery.SourceURL != nil && strings.Contains(strings.ToLower(*gallery.SourceURL), strings.ToLower(term)) {
+				match = true
+				break
+			}
+			// Backwards compatibility/fallback to 'URL' if SourceURL is nil
+			if gallery.SourceURL == nil && gallery.URL != nil && strings.Contains(strings.ToLower(*gallery.URL), strings.ToLower(term)) {
+				match = true
+				break
+			}
+		}
+
+		if match {
+			// Skip if manually unlinked
+			unlinked, err := al.db.IsGalleryUnlinked(ctx, p.ID, gallery.ID)
+			if err != nil {
+				slog.Warn("autolink: error checking unlinked status", "person_id", p.ID, "gallery_id", gallery.ID, "error", err)
+				continue
+			}
+			if unlinked {
+				continue
+			}
+
+			if err := al.db.LinkGallery(ctx, p.ID, gallery.ID); err != nil {
+				slog.Warn("autolink: error linking gallery",
+					"person_id", p.ID,
+					"gallery_id", gallery.ID,
+					"error", err,
+				)
+				continue
+			}
+			linked++
+		}
+	}
+
+	if linked > 0 {
+		slog.Info("autolink: linked gallery to people",
+			"gallery_id", gallery.ID,
+			"links_created", linked,
+		)
+	}
+
+	return linked, nil
+}
+
 // collectSearchTerms returns a list of names/aliases and their common variations
 // and URL-encoded forms for searching.
 func (al *AutoLinker) collectSearchTerms(person *models.Person) []string {

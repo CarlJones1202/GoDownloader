@@ -67,6 +67,7 @@ type Person struct {
 	Biography    *string    `db:"biography"    json:"biography,omitempty"`
 	Photos       *string    `db:"photos"       json:"photos,omitempty"` // JSON array of local photo paths
 	CreatedAt    time.Time  `db:"created_at"   json:"created_at"`
+	GalleryCount *int       `db:"gallery_count" json:"gallery_count,omitempty"`
 }
 
 // PersonIdentifier maps a person to an external provider's identifier (e.g. StashDB ID).

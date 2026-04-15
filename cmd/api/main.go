@@ -55,7 +55,9 @@ func main() {
 	}
 	defer db.Close()
 
-	crawlerSvc := crawler.New(db, cfg.Crawler)
+	autoLinker := linker.New(db)
+
+	crawlerSvc := crawler.New(db, cfg.Crawler, autoLinker)
 	crawlerSvc.RegisterParser(crawler.NewViperGirls())
 	crawlerSvc.RegisterParser(crawler.NewJKForum())
 	crawlerSvc.RegisterParser(crawler.NewKittyKats())
@@ -171,8 +173,6 @@ func main() {
 	queueMgr.Start()
 	defer queueMgr.Stop()
 
-	autoLinker := linker.New(db)
-
 	// Gallery metadata service — uses VPN-aware client for age-gated provider APIs.
 	metadataSvc := providers.NewGalleryMetadataService(vpnSvc.GetHTTPClient, cfg.Crawler.UserAgent)
 
@@ -225,7 +225,7 @@ func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.M
 	v1 := r.Group("/api/v1")
 
 	handlers.NewSourceHandler(db, crawlerSvc).RegisterRoutes(v1.Group("/sources"))
-	handlers.NewGalleryHandler(db, storage, metadataSvc).RegisterRoutes(v1.Group("/galleries"))
+	handlers.NewGalleryHandler(db, storage, metadataSvc, al).RegisterRoutes(v1.Group("/galleries"))
 	handlers.NewImageHandler(db, storage).RegisterRoutes(v1.Group("/images"))
 	handlers.NewVideoHandler(db).RegisterRoutes(v1.Group("/videos"))
 	photoDownloader := personphoto.NewDownloader(storage.PersonPhotosDir, httpClient, "")

@@ -17,6 +17,7 @@ import (
 	"github.com/carlj/godownload/internal/config"
 	"github.com/carlj/godownload/internal/database"
 	"github.com/carlj/godownload/internal/models"
+	"github.com/carlj/godownload/internal/services/linker"
 )
 
 // ImageLink holds a discovered image link from a forum post.
@@ -54,17 +55,19 @@ type Crawler struct {
 	client  *http.Client
 	parsers map[string]SourceParser
 
-	jobs   chan job
-	wg     sync.WaitGroup
-	stopCh chan struct{}
-	once   sync.Once
+	linker  *linker.AutoLinker
+	jobs    chan job
+	wg      sync.WaitGroup
+	stopCh  chan struct{}
+	once    sync.Once
 }
 
 // New creates a Crawler and starts its worker pool.
-func New(db *database.DB, cfg config.CrawlerConfig) *Crawler {
+func New(db *database.DB, cfg config.CrawlerConfig, al *linker.AutoLinker) *Crawler {
 	c := &Crawler{
-		db:  db,
-		cfg: cfg,
+		db:      db,
+		cfg:     cfg,
+		linker:  al,
 		client: &http.Client{
 			Timeout: cfg.RequestTimeout,
 			Transport: &http.Transport{
@@ -407,6 +410,12 @@ func (c *Crawler) ensureGallery(ctx context.Context, sourceID int64, title, sour
 	if err := c.db.CreateGallery(ctx, g); err != nil {
 		return 0, fmt.Errorf("creating gallery: %w", err)
 	}
+
+	// Auto-link new gallery to people
+	if c.linker != nil {
+		go c.linker.LinkGallery(ctx, g) //nolint:errcheck
+	}
+
 	return g.ID, nil
 }
 

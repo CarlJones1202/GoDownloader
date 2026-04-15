@@ -199,4 +199,6 @@ export const admin = {
       `/admin/galleries/cleanup?dry_run=${dryRun}`,
       { method: 'POST' },
     ),
+  autolinkGalleries: () =>
+    request<{ message: string; linked: number }>('/admin/galleries/autolink', { method: 'POST' }),
 };

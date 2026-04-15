@@ -10,6 +10,7 @@ import (
 	"github.com/carlj/godownload/internal/config"
 	"github.com/carlj/godownload/internal/database"
 	"github.com/carlj/godownload/internal/models"
+	"github.com/carlj/godownload/internal/services/linker"
 	"github.com/carlj/godownload/internal/services/providers"
 	"github.com/gin-gonic/gin"
 )
@@ -19,11 +20,12 @@ type GalleryHandler struct {
 	db          *database.DB
 	storage     config.StorageConfig
 	metadataSvc *providers.GalleryMetadataService
+	linker      *linker.AutoLinker
 }
 
 // NewGalleryHandler creates a GalleryHandler.
-func NewGalleryHandler(db *database.DB, storage config.StorageConfig, metadataSvc *providers.GalleryMetadataService) *GalleryHandler {
-	return &GalleryHandler{db: db, storage: storage, metadataSvc: metadataSvc}
+func NewGalleryHandler(db *database.DB, storage config.StorageConfig, metadataSvc *providers.GalleryMetadataService, al *linker.AutoLinker) *GalleryHandler {
+	return &GalleryHandler{db: db, storage: storage, metadataSvc: metadataSvc, linker: al}
 }
 
 // RegisterRoutes registers all gallery routes on the given group.
@@ -130,6 +132,12 @@ func (h *GalleryHandler) create(c *gin.Context) {
 		handleDBError(c, err)
 		return
 	}
+
+	// Auto-link new gallery to people
+	if h.linker != nil {
+		go h.linker.LinkGallery(c.Request.Context(), g) //nolint:errcheck
+	}
+
 	respondCreated(c, g)
 }
 

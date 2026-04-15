@@ -55,15 +55,15 @@ interface BadgeProps {
 export function Badge({ variant = 'default', children, className }: BadgeProps) {
   return (
     <span
-      className={cn(
-        'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
-        variant === 'default' && 'bg-zinc-800 text-zinc-300',
-        variant === 'success' && 'bg-emerald-900/50 text-emerald-400',
-        variant === 'warning' && 'bg-amber-900/50 text-amber-400',
-        variant === 'danger' && 'bg-red-900/50 text-red-400',
-        variant === 'info' && 'bg-blue-900/50 text-blue-400',
-        className,
-      )}
+className={cn(
+         'badge inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
+         variant === 'default' && 'bg-zinc-800 text-zinc-300',
+         variant === 'success' && 'bg-emerald-900/50 text-emerald-400',
+         variant === 'warning' && 'bg-amber-900/50 text-amber-400',
+         variant === 'danger' && 'bg-red-900/50 text-red-400',
+         variant === 'info' && 'bg-blue-900/50 text-blue-400',
+         className,
+       )}
     >
       {children}
     </span>

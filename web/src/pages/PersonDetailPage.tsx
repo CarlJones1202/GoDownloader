@@ -27,6 +27,7 @@ import {
   X,
   Check,
   User,
+  Edit,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -425,74 +426,62 @@ export function PersonDetailPage() {
         </Link>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[360px,1fr]">
-        <aside className="space-y-4 xl:sticky xl:top-6 self-start">
-          <div className="overflow-hidden rounded-[2rem] border border-white/8 bg-white/5">
-            <div className="relative aspect-[4/5] bg-zinc-900">
-              {coverPhoto ? (
-                <img src={coverPhoto} alt={person.name} className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-950">
-                  <User size={72} className="text-zinc-600" />
-                </div>
-              )}
-            </div>
+      <div className="flex flex-col md:flex-row gap-6 items-start">
+  <div className="relative w-full md:w-[320px] max-w-xs aspect-[4/5] overflow-hidden rounded-xl shadow-sm">
+    {coverPhoto ? (
+      <img src={coverPhoto} alt={person.name} className="w-full h-full object-cover" />
+    ) : (
+      <div className="flex w-full h-full items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-950">
+        <User size={72} className="text-zinc-600" />
+      </div>
+    )}
+    {photos.length > 1 && (
+      <div className="absolute bottom-2 right-2 flex items-center gap-1 bg-zinc-900/60 rounded-md px-2 py-1 text-xs text-zinc-300">
+        <button onClick={() => setPhotoIndex((i) => (i - 1 + photos.length) % photos.length)} className="rounded-full p-1 hover:bg-white/10"><ChevronLeft size={14} /></button>
+        <span>{photoIndex + 1} / {photos.length}</span>
+        <button onClick={() => setPhotoIndex((i) => (i + 1) % photos.length)} className="rounded-full p-1 hover:bg-white/10"><ChevronRight size={14} /></button>
+      </div>
+    )}
+  </div>
 
-            {photos.length > 1 && (
-              <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 text-xs text-zinc-300">
-                <button onClick={() => setPhotoIndex((i) => (i - 1 + photos.length) % photos.length)} className="rounded-full bg-white/5 p-2 hover:bg-white/10">
-                  <ChevronLeft size={14} />
-                </button>
-                <span>{photoIndex + 1} / {photos.length}</span>
-                <button onClick={() => setPhotoIndex((i) => (i + 1) % photos.length)} className="rounded-full bg-white/5 p-2 hover:bg-white/10">
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-            )}
-          </div>
+  <div className="flex-1 min-w-0">
+    <div className="flex items-start justify-between gap-2 mb-2">
+      <h1 className="text-3xl font-bold text-white leading-tight line-clamp-2">{person.name}</h1>
+      <div className="flex gap-1">
+        <Button size="sm" variant="ghost" title="Edit" onClick={() => editing ? setEditing(false) : startEditing()}><Edit size={18} /></Button>
+        <Button size="sm" variant="ghost" title="Identify" onClick={() => setIdentifyOpen(true)}><Search size={18} /></Button>
+        <Button size="sm" variant="ghost" title="Enrich" onClick={() => enrichMut.mutate()} disabled={enrichMut.isPending}><Sparkles size={18} /></Button>
+      </div>
+    </div>
+    <div className="flex flex-wrap gap-1.5 mb-1">
+      {person.aliases && <span className="text-xs text-zinc-400 truncate max-w-xs">{Array.isArray(person.aliases) ? person.aliases.slice(0,3).join(", ") : person.aliases}</span>}
+      {person.nationality && <Badge className="text-xs px-2 py-0.5">{person.nationality}</Badge>}
+      {person.ethnicity && <Badge className="text-xs px-2 py-0.5" variant="info">{person.ethnicity}</Badge>}
+      {typeof person.gallery_count === "number" && <Badge className="text-xs px-2 py-0.5" variant="default">{person.gallery_count === 1 ? "1 gallery" : `${person.gallery_count} galleries`}</Badge>}
+    </div>
+    <div className="flex flex-wrap gap-1 mb-2">
+      {person.height && <Badge className="text-xs px-2 py-0.5">{person.height}</Badge>}
+      {person.measurements && <Badge className="text-xs px-2 py-0.5" variant="warning">{person.measurements}</Badge>}
+    </div>
+    {person.biography && <p className="text-sm text-zinc-300 mt-2 mb-2 max-w-2xl line-clamp-4 whitespace-pre-line">{person.biography}</p>}
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 text-sm mt-3">
+      {person.birth_date && <div><span className="text-zinc-500">Birth date:</span> <span className="ml-1 text-zinc-100">{person.birth_date}</span></div>}
+      {person.hair_color && <div><span className="text-zinc-500">Hair:</span> <span className="ml-1 text-zinc-100">{person.hair_color}</span></div>}
+      {person.eye_color && <div><span className="text-zinc-500">Eyes:</span> <span className="ml-1 text-zinc-100">{person.eye_color}</span></div>}
+      {person.weight && <div><span className="text-zinc-500">Weight:</span> <span className="ml-1 text-zinc-100">{person.weight}</span></div>}
+      {person.tattoos && <div><span className="text-zinc-500">Tattoos:</span> <span className="ml-1 text-zinc-100">{person.tattoos}</span></div>}
+      {person.piercings && <div><span className="text-zinc-500">Piercings:</span> <span className="ml-1 text-zinc-100">{person.piercings}</span></div>}
+      <div><span className="text-zinc-500">Added:</span> <span className="ml-1 text-zinc-100">{formatDate(person.created_at)}</span></div>
+    </div>
+  </div>
+</div>
 
-          <Card className="rounded-[2rem] border-white/8 bg-white/5">
-            <div className="flex flex-wrap gap-2">
-              {person.nationality && <Badge>{person.nationality}</Badge>}
-              {person.ethnicity && <Badge variant="info">{person.ethnicity}</Badge>}
-              {person.height && <Badge variant="default">{person.height}</Badge>}
-              {person.measurements && <Badge variant="warning">{person.measurements}</Badge>}
-            </div>
-            <p className="mt-4 text-sm text-zinc-300 whitespace-pre-line">
-              {person.biography || 'No biography yet.'}
-            </p>
-            <div className="mt-4 grid gap-3">
-              <Button variant="secondary" size="sm" onClick={() => (editing ? setEditing(false) : startEditing())}>
-                {editing ? 'Cancel edit' : 'Edit profile'}
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => setIdentifyOpen(true)}>
-                <Search size={14} /> Identify
-              </Button>
-              <Button size="sm" onClick={() => enrichMut.mutate()} disabled={enrichMut.isPending}>
-                <Sparkles size={14} /> {enrichMut.isPending ? 'Enriching...' : 'Enrich'}
-              </Button>
-            </div>
-          </Card>
-        </aside>
+{/* Identifiers and Edit form sections remain below */}
 
-        <main className="space-y-6">
-          <div className="rounded-[2rem] border border-white/8 bg-white/5 p-6">
-            <p className="text-xs uppercase tracking-[0.28em] text-zinc-500">Talent profile</p>
-            <h1 className="mt-2 text-4xl font-semibold text-white">{person.name}</h1>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <DetailItem label="Aliases" value={person.aliases} />
-              <DetailItem label="Birth date" value={person.birth_date} />
-              <DetailItem label="Hair color" value={person.hair_color} />
-              <DetailItem label="Eye color" value={person.eye_color} />
-              <DetailItem label="Weight" value={person.weight} />
-              <DetailItem label="Tattoos" value={person.tattoos} />
-              <DetailItem label="Piercings" value={person.piercings} />
-              <DetailItem label="Added" value={formatDate(person.created_at)} />
-            </div>
-          </div>
+
 
           {editing && (
-            <Card className="rounded-[2rem] border-white/8 bg-white/5">
+            <Card className="rounded-2xl border-white/5 bg-white/2 shadow-none">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <Input label="Name" value={editForm.name} onChange={(e) => setField('name', e.target.value)} />
                 <Input label="Aliases" placeholder="Comma-separated" value={editForm.aliases} onChange={(e) => setField('aliases', e.target.value)} />
@@ -523,7 +512,7 @@ export function PersonDetailPage() {
               <h2 className="text-lg font-semibold text-white">Identifiers</h2>
               <span className="text-sm text-zinc-500">External matches and references</span>
             </div>
-            <Card className="rounded-[2rem] border-white/8 bg-white/5">
+            <Card className="rounded-2xl border-white/5 bg-white/2 shadow-none">
               {loadingIds ? (
                 <Spinner />
               ) : !identifiers || identifiers.length === 0 ? (
@@ -531,7 +520,7 @@ export function PersonDetailPage() {
               ) : (
                 <div className="space-y-3">
                   {identifiers.map((ident) => (
-                    <div key={ident.id} className="flex items-center justify-between rounded-2xl bg-black/20 px-4 py-3 ring-1 ring-white/5">
+                        <div key={ident.id} className="flex items-center justify-between rounded-xl bg-black/10 px-4 py-2 ring-1 ring-white/3">
                       <div className="flex items-center gap-2">
                         <Badge variant="info">{ident.provider}</Badge>
                         <span className="font-mono text-sm text-zinc-200">{ident.external_id}</span>
@@ -572,37 +561,22 @@ export function PersonDetailPage() {
             ) : !galleryList || galleryList.length === 0 ? (
               <EmptyState message="No galleries linked to this person." />
             ) : (
-              <div className="space-y-3">
-                {galleryList.map((g) => (
-                  <Card key={g.id} className="rounded-[1.5rem] border-white/8 bg-white/5 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <Link to={`/galleries/${g.id}`} className="block text-sm font-medium text-white hover:text-blue-400 line-clamp-1">
-                          {g.title || `Gallery #${g.id}`}
-                        </Link>
-                        {g.provider && <Badge className="mt-2">{g.provider}</Badge>}
-                        {g.url && (
-                          <a href={g.url} target="_blank" className="mt-2 inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-blue-400">
-                            <ExternalLink size={10} /> {g.url}
-                          </a>
-                        )}
-                      </div>
-                      <Button variant="ghost" size="sm" title="Unlink gallery" onClick={() => unlinkMut.mutate(g.id)} disabled={unlinkMut.isPending}>
-                        <Unlink size={14} />
-                      </Button>
-                    </div>
-                  </Card>
-                ))}
-              </div>
+              <CoverGrid
+  items={galleryList.map((g) => ({
+    id: g.id,
+    title: g.title ?? null,
+    thumbnailPath: g.local_thumbnail_path ? g.local_thumbnail_path.split('/').pop() : undefined,
+    provider: g.provider ?? null,
+    createdAt: g.created_at
+  }))}
+/>
             )}
 
             {galleryList && galleryList.length > 0 && (
               <Pagination page={galleryPage} hasMore={galleryList.length === galleryLimit} onPrev={galleryPrev} onNext={galleryNext} />
             )}
-          </section>
-        </main>
-      </div>
-
+           </section>
+        
       <IdentifyModal
         personId={personId}
         personName={person.name}

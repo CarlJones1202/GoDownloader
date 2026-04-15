@@ -37,8 +37,8 @@ func Open(cfg config.DatabaseConfig) (*DB, error) {
 		return nil, fmt.Errorf("database: opening %q: %w", cfg.Path, err)
 	}
 
-	sqlxDB.SetMaxOpenConns(cfg.MaxOpenConns)
-	sqlxDB.SetMaxIdleConns(cfg.MaxIdleConns)
+	sqlxDB.SetMaxOpenConns(1) // SQLite requires single connection
+	sqlxDB.SetMaxIdleConns(1)
 	sqlxDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 	sqlxDB.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
 

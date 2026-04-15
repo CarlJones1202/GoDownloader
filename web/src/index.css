@@ -1,1 +1,6 @@
 @import "tailwindcss";
+
+/* Remove padding only for People page cards */
+.person-card-flat {
+  padding: 0 !important;
+}
