@@ -5,6 +5,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"flag"
 	"log/slog"
 	"net/http"
@@ -105,65 +107,6 @@ func main() {
 	queueMgr := queue.New(db, dbWriter, cfg.Crawler.Workers, cfg.Crawler.MaxRetries)
 	processors.New(db, dbWriter, ripperReg, *cfg, thumbWorker, colorWorker, videoReg, videoWorker, trickplayWorker).Register(queueMgr)
 
-	// --- Scan for missing images and enqueue re-download jobs ---
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-	images, err := db.ListImages(ctx, database.ImageFilter{Limit: -1})
-	if err != nil {
-		slog.Error("startup: failed to list images for missing file check", "error", err)
-	} else {
-		missingCount := 0
-		queueFailures := 0
-		// Partition missing images into favorites and non-favorites
-		var missingFavorites, missingRegulars []models.Image
-		for _, img := range images {
-			if img.Filename == "" {
-				continue
-			}
-			imgPath := filepath.Join(cfg.Storage.ImagesDir, img.Filename)
-			if _, err := os.Stat(imgPath); os.IsNotExist(err) {
-				if img.IsFavorite {
-					missingFavorites = append(missingFavorites, img)
-				} else {
-					missingRegulars = append(missingRegulars, img)
-				}
-			}
-		}
-
-		enqueueSet := func(imgs []models.Image, priorityLog bool) {
-			for _, img := range imgs {
-				if img.OriginalURL == nil || *img.OriginalURL == "" {
-					slog.Warn("image missing but has no OriginalURL, cannot requeue", "image_id", img.ID, "file", img.Filename)
-					continue
-				}
-				job := &models.DownloadQueue{
-					Type:     "image",
-					URL:      *img.OriginalURL,
-					TargetID: &img.ID,
-				}
-				err := db.EnqueueItem(ctx, job)
-				if err != nil {
-					if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "duplicate") {
-						slog.Info("already queued for download (skipped duplicate)", "image_id", img.ID, "file", img.Filename, "priority_favorite", priorityLog)
-					} else {
-						slog.Error("failed to enqueue missing image for download", "image_id", img.ID, "error", err, "priority_favorite", priorityLog)
-						queueFailures++
-					}
-				} else {
-					slog.Info("requeued missing image for download", "image_id", img.ID, "file", img.Filename, "priority_favorite", priorityLog)
-					missingCount++
-				}
-			}
-		}
-		// Enqueue favorites first, then others
-		enqueueSet(missingFavorites, true)
-		enqueueSet(missingRegulars, false)
-
-		slog.Info("missing image scan complete", "missing_found", missingCount, "queue_failures", queueFailures)
-	}
-
-	// --- End missing image scan ---
-
 	// WebSocket hub for real-time download progress.
 	wsHub := ws.NewHub()
 	go wsHub.Run()
@@ -176,7 +119,10 @@ func main() {
 	// Gallery metadata service — uses VPN-aware client for age-gated provider APIs.
 	metadataSvc := providers.NewGalleryMetadataService(vpnSvc.GetHTTPClient, cfg.Crawler.UserAgent)
 
-	router := buildRouter(db, crawlerSvc, queueMgr, autoLinker, enricher, cfg.Storage, wsHub, metadataSvc, httpClient)
+	// Create photoDownloader for use in both router and async startup scan
+	photoDownloader := personphoto.NewDownloader(cfg.Storage.PersonPhotosDir, httpClient, "")
+
+	router := buildRouter(db, crawlerSvc, queueMgr, autoLinker, enricher, cfg.Storage, wsHub, metadataSvc, httpClient, photoDownloader)
 
 	srv := &http.Server{
 		Addr:         cfg.Addr(),
@@ -195,6 +141,9 @@ func main() {
 		}
 	}()
 
+	// Run missing file scans asynchronously so the API is available immediately.
+	go runMissingFileScans(db, cfg, photoDownloader)
+
 	// Block until a termination signal is received.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -202,7 +151,7 @@ func main() {
 
 	slog.Info("shutting down server...")
 
-	ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
@@ -214,7 +163,7 @@ func main() {
 }
 
 // buildRouter wires up all routes and returns the configured gin.Engine.
-func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.Manager, al *linker.AutoLinker, enricher *providers.Enricher, storage config.StorageConfig, wsHub *ws.Hub, metadataSvc *providers.GalleryMetadataService, httpClient *http.Client) *gin.Engine {
+func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.Manager, al *linker.AutoLinker, enricher *providers.Enricher, storage config.StorageConfig, wsHub *ws.Hub, metadataSvc *providers.GalleryMetadataService, httpClient *http.Client, photoDownloader *personphoto.Downloader) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.New()
@@ -228,7 +177,6 @@ func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.M
 	handlers.NewGalleryHandler(db, storage, metadataSvc, al).RegisterRoutes(v1.Group("/galleries"))
 	handlers.NewImageHandler(db, storage).RegisterRoutes(v1.Group("/images"))
 	handlers.NewVideoHandler(db).RegisterRoutes(v1.Group("/videos"))
-	photoDownloader := personphoto.NewDownloader(storage.PersonPhotosDir, httpClient, "")
 	handlers.NewPeopleHandler(db, al, enricher, photoDownloader).RegisterRoutes(v1.Group("/people"))
 	handlers.NewAdminHandler(db, crawlerSvc, queueMgr, al).RegisterRoutes(v1.Group("/admin"))
 
@@ -306,4 +254,177 @@ func setupLogger(cfg config.LogConfig) {
 	}
 
 	slog.SetDefault(slog.New(handler))
+}
+
+func runMissingFileScans(db *database.DB, cfg *config.Config, photoDownloader *personphoto.Downloader) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	scanMissingImages(ctx, db, cfg)
+	scanMissingPersonPhotos(ctx, db, cfg, photoDownloader)
+}
+
+func scanMissingImages(ctx context.Context, db *database.DB, cfg *config.Config) {
+	favorite := true
+	nonFavorite := false
+
+	favoriteImages, err := db.ListImages(ctx, database.ImageFilter{IsFavorite: &favorite, Limit: -1})
+	if err != nil {
+		slog.Error("startup: failed to list favorite images for missing file check", "error", err)
+		return
+	}
+
+	regularImages, err := db.ListImages(ctx, database.ImageFilter{IsFavorite: &nonFavorite, Limit: -1})
+	if err != nil {
+		slog.Error("startup: failed to list regular images for missing file check", "error", err)
+		return
+	}
+
+	missingCount := 0
+	queueFailures := 0
+
+	processMissing := func(imgs []models.Image, priorityLog bool) {
+		for _, img := range imgs {
+			if img.Filename == "" {
+				continue
+			}
+			imgPath := filepath.Join(cfg.Storage.ImagesDir, img.Filename)
+			if _, err := os.Stat(imgPath); err == nil {
+				continue
+			}
+
+			slog.Debug("found missing image", "image_id", img.ID, "file", img.Filename, "is_favorite", img.IsFavorite)
+
+			if img.OriginalURL == nil || *img.OriginalURL == "" {
+				slog.Warn("image missing but has no OriginalURL, cannot requeue", "image_id", img.ID, "file", img.Filename)
+				continue
+			}
+			existingItem, err := db.GetQueueItemByTarget(ctx, img.ID, "image")
+			if err == nil && existingItem != nil {
+				if existingItem.Status == string(models.QueueStatusCompleted) {
+					if err := db.DeleteQueueItem(ctx, existingItem.ID); err != nil {
+						slog.Error("failed to delete completed item", "image_id", img.ID, "queue_id", existingItem.ID, "error", err)
+						queueFailures++
+						continue
+					}
+					slog.Info("deleted completed item, will re-queue", "image_id", img.ID, "queue_id", existingItem.ID, "priority_favorite", priorityLog)
+				} else if existingItem.Status == string(models.QueueStatusPending) || existingItem.Status == string(models.QueueStatusActive) {
+					slog.Info("already pending/active in queue (skipped)", "image_id", img.ID, "queue_id", existingItem.ID, "status", existingItem.Status, "priority_favorite", priorityLog)
+					continue
+				} else {
+					if err := db.UpdateQueueStatus(ctx, existingItem.ID, models.QueueStatusPending, nil); err != nil {
+						slog.Error("failed to move item to pending", "image_id", img.ID, "queue_id", existingItem.ID, "error", err)
+						queueFailures++
+						continue
+					}
+					slog.Info("moved item to pending", "image_id", img.ID, "queue_id", existingItem.ID, "previous_status", existingItem.Status, "priority_favorite", priorityLog)
+					missingCount++
+					continue
+				}
+			}
+			if !errors.Is(err, database.ErrNotFound) && err != nil {
+				slog.Error("failed to check existing queue item", "image_id", img.ID, "error", err)
+				continue
+			}
+			job := &models.DownloadQueue{
+				Type:     "image",
+				URL:      *img.OriginalURL,
+				TargetID: &img.ID,
+			}
+			err = db.EnqueueItem(ctx, job)
+			if err != nil {
+				if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "duplicate") {
+					slog.Info("already queued for download (skipped duplicate)", "image_id", img.ID, "file", img.Filename, "priority_favorite", priorityLog)
+				} else {
+					slog.Error("failed to enqueue missing image for download", "image_id", img.ID, "error", err, "priority_favorite", priorityLog)
+					queueFailures++
+				}
+			} else {
+				slog.Info("enqueued missing image for download", "image_id", img.ID, "file", img.Filename, "priority_favorite", priorityLog)
+				missingCount++
+			}
+		}
+	}
+
+	slog.Info("missing image scan", "favorites", len(favoriteImages), "regulars", len(regularImages))
+
+	processMissing(favoriteImages, true)
+	processMissing(regularImages, false)
+
+	slog.Info("missing image scan complete", "missing_found", missingCount, "queue_failures", queueFailures)
+}
+
+func scanMissingPersonPhotos(ctx context.Context, db *database.DB, cfg *config.Config, photoDownloader *personphoto.Downloader) {
+	people, err := db.ListPeople(ctx, database.PeopleFilter{Limit: -1})
+	if err != nil {
+		slog.Error("startup: failed to list people for missing photo check", "error", err)
+		return
+	}
+
+	missingPhotoCount := 0
+	for _, p := range people {
+		photoPaths := decodePhotoPaths(p.Photos)
+		if len(photoPaths) == 0 {
+			continue
+		}
+		missingPhoto := false
+		for _, photoPath := range photoPaths {
+			fullPath := filepath.Join(cfg.Storage.PersonPhotosDir, strings.TrimPrefix(photoPath, "/data/person_photos/"))
+			if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+				missingPhoto = true
+				break
+			}
+		}
+		if !missingPhoto {
+			continue
+		}
+		photoURLs, err := db.GetPersonPhotoURLs(ctx, p.ID)
+		if err != nil || len(photoURLs) == 0 {
+			slog.Warn("person has missing photos but no stored URLs to re-download", "person_id", p.ID, "name", p.Name)
+			continue
+		}
+		downloadedPaths := photoDownloader.DownloadAll(ctx, photoURLs, p.ID)
+		if len(downloadedPaths) > 0 {
+			merged := mergePhotoPaths(decodePhotoPaths(p.Photos), downloadedPaths)
+			encoded, err := json.Marshal(merged)
+			if err == nil {
+				s := string(encoded)
+				p.Photos = &s
+				if err := db.UpdatePerson(ctx, &p); err != nil {
+					slog.Error("failed to update person photos", "person_id", p.ID, "error", err)
+				} else {
+					slog.Info("re-downloaded person photos", "person_id", p.ID, "name", p.Name, "count", len(downloadedPaths))
+					missingPhotoCount++
+				}
+			}
+		}
+	}
+	slog.Info("missing person photo scan complete", "people_photos_restored", missingPhotoCount)
+}
+
+func decodePhotoPaths(photos *string) []string {
+	if photos == nil || *photos == "" {
+		return nil
+	}
+	var paths []string
+	if err := json.Unmarshal([]byte(*photos), &paths); err != nil {
+		return nil
+	}
+	return paths
+}
+
+func mergePhotoPaths(existing, newPaths []string) []string {
+	seen := make(map[string]struct{}, len(existing))
+	merged := make([]string, 0, len(existing)+len(newPaths))
+	for _, p := range existing {
+		seen[p] = struct{}{}
+		merged = append(merged, p)
+	}
+	for _, p := range newPaths {
+		if _, ok := seen[p]; !ok {
+			merged = append(merged, p)
+			seen[p] = struct{}{}
+		}
+	}
+	return merged
 }

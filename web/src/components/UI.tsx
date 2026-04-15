@@ -222,15 +222,16 @@ export function ConfirmDialog({
 
 interface PaginationProps {
   page: number;
-  hasMore: boolean;
+  totalPages: number;
   onPrev: () => void;
   onNext: () => void;
+  hasMore?: boolean;
 }
 
-export function Pagination({ page, hasMore, onPrev, onNext }: PaginationProps) {
+export function Pagination({ page, totalPages, onPrev, onNext, hasMore }: PaginationProps) {
   return (
     <div className="flex items-center justify-between mt-4 text-sm text-zinc-400">
-      <span>Page {page}</span>
+      <span>Page {page} of {totalPages}</span>
       <div className="flex gap-2">
         <Button variant="ghost" size="sm" onClick={onPrev} disabled={page <= 1}>
           Previous

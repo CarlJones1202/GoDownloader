@@ -70,7 +70,7 @@ export interface GalleryListParams extends PaginationParams {
 
 export const galleries = {
   list: (params: GalleryListParams = {}) =>
-    request<Gallery[]>(`/galleries${qs(params)}`),
+    request<PaginatedResult<Gallery>>(`/galleries${qs(params)}`),
   get: (id: number) => request<Gallery>(`/galleries/${id}`),
   create: (data: Partial<Gallery>) =>
     request<Gallery>('/galleries', { method: 'POST', body: JSON.stringify(data) }),
@@ -126,7 +126,7 @@ export interface PeopleListParams extends PaginationParams {
 
 export const people = {
   list: (params: PeopleListParams = {}) =>
-    request<Person[]>(`/people${qs(params)}`),
+    request<PaginatedResult<Person>>(`/people${qs(params)}`),
   get: (id: number) => request<Person>(`/people/${id}`),
   create: (data: { name: string; aliases?: string; nationality?: string }) =>
     request<Person>('/people', { method: 'POST', body: JSON.stringify(data) }),

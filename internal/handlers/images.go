@@ -71,7 +71,20 @@ func (h *ImageHandler) list(c *gin.Context) {
 		handleDBError(c, err)
 		return
 	}
-	respondOK(c, images)
+	totalCount, err := h.db.CountImages(c.Request.Context(), f)
+	if err != nil {
+		handleDBError(c, err)
+		return
+	}
+	totalPages := (totalCount + int64(limit) - 1) / int64(limit)
+	currentPage := (offset / limit) + 1
+	respondOK(c, gin.H{
+		"items": images,
+		"total_items": totalCount,
+		"total_pages": totalPages,
+		"current_page": currentPage,
+		"page_size": limit,
+	})
 }
 
 func (h *ImageHandler) get(c *gin.Context) {

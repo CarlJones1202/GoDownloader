@@ -140,10 +140,26 @@ func (db *DB) SetGalleryThumbnail(ctx context.Context, galleryID int64, thumbPat
 	return nil
 }
 
-// CountGalleries returns the total number of galleries.
-func (db *DB) CountGalleries(ctx context.Context) (int64, error) {
+// CountGalleries returns the total number of galleries matching the filter.
+func (db *DB) CountGalleries(ctx context.Context, f GalleryFilter) (int64, error) {
+	query := `SELECT COUNT(*) FROM galleries WHERE 1=1`
+	args := []any{}
+
+	if f.SourceID != nil {
+		query += " AND source_id = ?"
+		args = append(args, *f.SourceID)
+	}
+	if f.Provider != nil {
+		query += " AND provider = ?"
+		args = append(args, *f.Provider)
+	}
+	if f.Search != nil {
+		query += " AND title LIKE ?"
+		args = append(args, "%"+*f.Search+"%")
+	}
+
 	var count int64
-	if err := db.GetContext(ctx, &count, `SELECT COUNT(*) FROM galleries`); err != nil {
+	if err := db.GetContext(ctx, &count, query, args...); err != nil {
 		return 0, fmt.Errorf("counting galleries: %w", err)
 	}
 	return count, nil

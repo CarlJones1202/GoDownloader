@@ -53,6 +53,22 @@ func (db *DB) ListQueue(ctx context.Context, f QueueFilter) ([]models.DownloadQu
 	return items, nil
 }
 
+// GetQueueItemByTarget retrieves a queue item by target_id and type.
+func (db *DB) GetQueueItemByTarget(ctx context.Context, targetID int64, queueType string) (*models.DownloadQueue, error) {
+	var item models.DownloadQueue
+	err := db.GetContext(ctx, &item,
+		`SELECT id, type, url, target_id, status, retry_count, error_message, created_at
+		   FROM download_queue WHERE target_id = ? AND type = ?`, targetID, queueType,
+	)
+	if err != nil {
+		if IsNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("getting queue item by target %d: %w", targetID, err)
+	}
+	return &item, nil
+}
+
 // GetQueueItem retrieves a single queue item by ID.
 func (db *DB) GetQueueItem(ctx context.Context, id int64) (*models.DownloadQueue, error) {
 	var item models.DownloadQueue

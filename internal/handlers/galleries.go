@@ -96,7 +96,20 @@ func (h *GalleryHandler) list(c *gin.Context) {
 		handleDBError(c, err)
 		return
 	}
-	respondOK(c, galleries)
+	totalCount, err := h.db.CountGalleries(c.Request.Context(), f)
+	if err != nil {
+		handleDBError(c, err)
+		return
+	}
+	totalPages := (totalCount + int64(limit) - 1) / int64(limit) // ceil division
+	currentPage := (offset / limit) + 1
+	respondOK(c, gin.H{
+		"items": galleries,
+		"total_items": totalCount,
+		"total_pages": totalPages,
+		"current_page": currentPage,
+		"page_size": limit,
+	})
 }
 
 func (h *GalleryHandler) get(c *gin.Context) {

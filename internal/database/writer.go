@@ -634,3 +634,9 @@ func (w *DBWriter) EnqueueItem(ctx context.Context, item *models.DownloadQueue) 
 	item.ID = id
 	return nil
 }
+
+// FindImageByGalleryAndFilename finds an existing image by gallery_id and filename.
+// This is a read-only operation, so it goes directly to the database.
+func (w *DBWriter) FindImageByGalleryAndFilename(ctx context.Context, galleryID *int64, filename string) (*models.Image, error) {
+	return w.db.FindImageByGalleryAndFilename(ctx, galleryID, filename)
+}

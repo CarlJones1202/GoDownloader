@@ -232,6 +232,30 @@ func (db *DB) CountPeople(ctx context.Context) (int64, error) {
 	return count, nil
 }
 
+// CountPeopleWithFilter returns the total number of people matching the filter.
+// Supports the same filters as ListPeople.
+func (db *DB) CountPeopleWithFilter(ctx context.Context, f PeopleFilter) (int64, error) {
+	var count int64
+	query := `SELECT COUNT(*) FROM people p`
+	args := []any{}
+	clauses := []string{}
+
+	if f.Search != nil && *f.Search != "" {
+		clauses = append(clauses, "p.name LIKE ?")
+		args = append(args, "%"+*f.Search+"%")
+	}
+
+	if len(clauses) > 0 {
+		query += " WHERE " + strings.Join(clauses, " AND ")
+	}
+
+	if err := db.GetContext(ctx, &count, query, args...); err != nil {
+		return 0, fmt.Errorf("counting people with filter: %w", err)
+	}
+	return count, nil
+}
+
+
 // FindGalleriesByTitleMatch returns gallery IDs whose title contains the
 // given name (case-insensitive). Used for auto-linking.
 func (db *DB) FindGalleriesByTitleMatch(ctx context.Context, name string) ([]int64, error) {
@@ -407,6 +431,52 @@ func (db *DB) MergePeople(ctx context.Context, keepID int64, mergeIDs []int64) e
 	}
 
 	return nil
+}
+
+// SavePersonPhotoURLs saves photo URLs for a person, replacing any existing ones.
+func (db *DB) SavePersonPhotoURLs(ctx context.Context, personID int64, urls []string) error {
+	tx, err := db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM person_photo_urls WHERE person_id = ?`, personID); err != nil {
+		return fmt.Errorf("clearing existing photo URLs: %w", err)
+	}
+
+	for _, url := range urls {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO person_photo_urls (person_id, photo_url) VALUES (?, ?)`,
+			personID, url,
+		); err != nil {
+			return fmt.Errorf("inserting photo URL for person %d: %w", personID, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing photo URLs: %w", err)
+	}
+	return nil
+}
+
+// GetPersonPhotoURLs retrieves all stored photo URLs for a person.
+func (db *DB) GetPersonPhotoURLs(ctx context.Context, personID int64) ([]string, error) {
+	rows := []struct {
+		PhotoURL string `db:"photo_url"`
+	}{}
+	err := db.SelectContext(ctx, &rows,
+		`SELECT photo_url FROM person_photo_urls WHERE person_id = ? ORDER BY id ASC`,
+		personID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("getting photo URLs for person %d: %w", personID, err)
+	}
+	urls := make([]string, len(rows))
+	for i, r := range rows {
+		urls[i] = r.PhotoURL
+	}
+	return urls, nil
 }
 
 // BulkDeletePeople deletes multiple people by IDs and returns the number deleted.

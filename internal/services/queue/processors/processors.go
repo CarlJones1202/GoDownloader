@@ -33,6 +33,7 @@ type DBWriter interface {
 	SetGalleryThumbnail(ctx context.Context, galleryID int64, thumbPath string) error
 	TouchSourceCrawledAt(ctx context.Context, id int64) error
 	EnqueueItem(ctx context.Context, item *models.DownloadQueue) error
+	FindImageByGalleryAndFilename(ctx context.Context, galleryID *int64, filename string) (*models.Image, error)
 }
 
 // Processors holds all queue processor implementations.
@@ -102,6 +103,20 @@ func (p *Processors) processImage(ctx context.Context, item *models.DownloadQueu
 
 	// Store only the page URL as the original URL in the DB.
 	for _, res := range results {
+		// Check if image already exists (e.g., from a previous download or re-download scenario).
+		existingImg, err := p.dbWriter.FindImageByGalleryAndFilename(ctx, item.TargetID, res.Filename)
+		if err == nil && existingImg != nil {
+			slog.Info("processor: image already exists, skipping record creation",
+				"image_id", existingImg.ID,
+				"filename", res.Filename,
+				"gallery_id", item.TargetID,
+			)
+			// Still run thumbnail/color extraction for the re-downloaded file.
+			p.generateThumbnail(ctx, existingImg)
+			p.extractColors(ctx, existingImg)
+			continue
+		}
+
 		img := &models.Image{
 			GalleryID:   item.TargetID,
 			Filename:    res.Filename,
@@ -239,6 +254,20 @@ func (p *Processors) processGallery(ctx context.Context, item *models.DownloadQu
 
 	// Persist each downloaded file as an Image record.
 	for _, res := range results {
+		// Check if image already exists (e.g., from a previous download or re-download scenario).
+		existingImg, err := p.dbWriter.FindImageByGalleryAndFilename(ctx, galleryID, res.Filename)
+		if err == nil && existingImg != nil {
+			slog.Info("processor: gallery image already exists, skipping record creation",
+				"image_id", existingImg.ID,
+				"filename", res.Filename,
+				"gallery_id", galleryID,
+			)
+			// Still run thumbnail/color extraction for the re-downloaded file.
+			p.generateThumbnail(ctx, existingImg)
+			p.extractColors(ctx, existingImg)
+			continue
+		}
+
 		img := &models.Image{
 			GalleryID:   galleryID,
 			Filename:    res.Filename,

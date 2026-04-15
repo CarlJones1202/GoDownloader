@@ -41,7 +41,7 @@ export function GalleriesPage() {
     setConfirmDeleteId(id);
   };
 
-  const coverItems = galleryList?.map((g) => ({
+  const coverItems = galleryList?.items.map((g) => ({
     id: g.id,
     title: g.title ?? null,
     thumbnailPath: g.local_thumbnail_path,
@@ -77,17 +77,18 @@ export function GalleriesPage() {
 
       {isLoading ? (
         <Spinner />
-      ) : !galleryList || galleryList.length === 0 ? (
+      ) : !galleryList || galleryList.items.length === 0 ? (
         <EmptyState message="No galleries found." />
       ) : (
         <>
           <CoverGrid items={coverItems} onDelete={handleDelete} />
 
           <Pagination
-            page={page}
-            hasMore={galleryList.length === limit}
+            page={galleryList.current_page}
+            totalPages={galleryList.total_pages}
             onPrev={prevPage}
             onNext={nextPage}
+            hasMore={galleryList.current_page < galleryList.total_pages}
           />
         </>
       )}

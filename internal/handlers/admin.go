@@ -72,7 +72,7 @@ func (h *AdminHandler) stats(c *gin.Context) {
 		return
 	}
 
-	galleryCount, err := h.db.CountGalleries(ctx)
+	galleryCount, err := h.db.CountGalleries(ctx, database.GalleryFilter{})
 	if err != nil {
 		handleDBError(c, err)
 		return

@@ -78,6 +78,15 @@ type upsertIdentifierRequest struct {
 	ExternalID string `json:"external_id" binding:"required"`
 }
 
+// paginatedPeopleResult is the response envelope for paginated people queries.
+type paginatedPeopleResult struct {
+	Items      []models.Person `json:"items"`
+	TotalItems int64           `json:"total_items"`
+	TotalPages int64           `json:"total_pages"`
+	CurrentPage int            `json:"current_page"`
+	PageSize   int             `json:"page_size"`
+}
+
 func (h *PeopleHandler) list(c *gin.Context) {
 	limit, offset := paginationParams(c)
 
@@ -89,12 +98,33 @@ func (h *PeopleHandler) list(c *gin.Context) {
 		f.Search = &v
 	}
 
-	people, err := h.db.ListPeople(c.Request.Context(), f)
+	ctx := c.Request.Context()
+
+	people, err := h.db.ListPeople(ctx, f)
 	if err != nil {
 		handleDBError(c, err)
 		return
 	}
-	respondOK(c, people)
+
+	totalCount, err := h.db.CountPeopleWithFilter(ctx, f)
+	if err != nil {
+		handleDBError(c, err)
+		return
+	}
+
+	totalPages := int64((totalCount + int64(limit) - 1) / int64(limit))
+	currentPage := 1
+	if limit > 0 {
+		currentPage = (offset / limit) + 1
+	}
+
+	respondOK(c, paginatedPeopleResult{
+		Items:      people,
+		TotalItems: totalCount,
+		TotalPages: totalPages,
+		CurrentPage: currentPage,
+		PageSize:   limit,
+	})
 }
 
 func (h *PeopleHandler) get(c *gin.Context) {
@@ -300,7 +330,8 @@ func (h *PeopleHandler) upsertIdentifier(c *gin.Context) {
 }
 
 // enrich fetches metadata from all external providers for the person and
-// optionally merges it into the local record.
+// optionally merges it into the local record. Uses stored identifiers to
+// fetch up-to-date data when available.
 //
 // Query params:
 //   - provider: limit to a single provider (stashdb, freeones, babepedia, metart, metartx, playboy)
@@ -320,8 +351,31 @@ func (h *PeopleHandler) enrich(c *gin.Context) {
 	providerName := c.Query("provider")
 	applyChanges := c.Query("apply") == "true"
 
+	identifiers, _ := h.db.ListPersonIdentifiers(c.Request.Context(), p.ID)
+
 	if providerName != "" {
-		// Single-provider lookup.
+		// Check if we have an identifier for this provider to use for precise lookup.
+		for _, ident := range identifiers {
+			if ident.Provider == providerName {
+				info, lookupErr := h.enricher.GetByExternalID(c.Request.Context(), providerName, ident.ExternalID)
+				if lookupErr != nil {
+					slog.Warn("enrich: identifier lookup failed, falling back to name search",
+						"person_id", p.ID, "provider", providerName, "error", lookupErr)
+					break
+				}
+				if applyChanges {
+					h.applyPersonInfo(c, p, info, providerName)
+					return
+				}
+				respondOK(c, gin.H{
+					"provider": providerName,
+					"person":   info,
+				})
+				return
+			}
+		}
+
+		// No identifier for this provider, fall back to name search.
 		info, lookupErr := h.enricher.LookupProvider(c.Request.Context(), providerName, p.Name)
 		if lookupErr != nil {
 			respondError(c, http.StatusBadGateway, lookupErr.Error())
@@ -340,15 +394,49 @@ func (h *PeopleHandler) enrich(c *gin.Context) {
 		return
 	}
 
-	// All-provider lookup.
-	result := h.enricher.LookupPerson(c.Request.Context(), p.Name)
+	// All-provider lookup: use identifiers first for precise lookups, then merge with name searches.
+	type providerInfo struct {
+		provider string
+		info    *providers.PersonInfo
+	}
+	var infos []providerInfo
 
-	if applyChanges {
-		h.applyPersonInfo(c, p, &result.Merged, "merged")
+	for _, ident := range identifiers {
+		info, err := h.enricher.GetByExternalID(c.Request.Context(), ident.Provider, ident.ExternalID)
+		if err != nil {
+			slog.Warn("enrich: identifier lookup failed, falling back to name search",
+				"person_id", p.ID, "provider", ident.Provider, "error", err)
+			continue
+		}
+		infos = append(infos, providerInfo{ident.Provider, info})
+	}
+
+	if len(infos) == 0 {
+		// No identifiers or all lookups failed, fall back to name search.
+		result := h.enricher.LookupPerson(c.Request.Context(), p.Name)
+		if applyChanges {
+			h.applyPersonInfo(c, p, &result.Merged, "merged")
+			return
+		}
+		respondOK(c, result)
 		return
 	}
 
-	respondOK(c, result)
+	// Merge info from all identifier-based lookups.
+	merged := &providers.PersonInfo{Name: p.Name}
+	for _, pi := range infos {
+		h.mergePersonInfoFields(merged, pi.info)
+	}
+
+	if applyChanges {
+		h.applyPersonInfo(c, p, merged, "merged")
+		return
+	}
+
+	respondOK(c, gin.H{
+		"person": merged,
+		"source": "identifiers",
+	})
 }
 
 // applyPersonInfo merges provider metadata into the person record, saves
@@ -368,6 +456,10 @@ func (h *PeopleHandler) applyPersonInfo(c *gin.Context, p *models.Person, info *
 				s := string(encoded)
 				p.Photos = &s
 			}
+		}
+		// Save original photo URLs for re-downloading later.
+		if err := h.db.SavePersonPhotoURLs(c.Request.Context(), p.ID, info.ImageURLs); err != nil {
+			slog.Warn("failed to save photo URLs for person", "person_id", p.ID, "error", err)
 		}
 	}
 
@@ -460,6 +552,10 @@ func (h *PeopleHandler) applyPersonInfoQuiet(ctx context.Context, p *models.Pers
 				s := string(encoded)
 				p.Photos = &s
 			}
+		}
+		// Save original photo URLs for re-downloading later.
+		if err := h.db.SavePersonPhotoURLs(ctx, p.ID, info.ImageURLs); err != nil {
+			slog.Warn("failed to save photo URLs for person", "person_id", p.ID, "error", err)
 		}
 	}
 
@@ -749,6 +845,62 @@ func (h *PeopleHandler) mergePersonFields(p *models.Person, info *providers.Pers
 	}
 	if info.Biography != nil && p.Biography == nil {
 		p.Biography = info.Biography
+	}
+}
+
+// mergePersonInfoFields merges non-nil fields from src into dest, preferring
+// dest values when both are set.
+func (h *PeopleHandler) mergePersonInfoFields(dest, src *providers.PersonInfo) {
+	if src == nil {
+		return
+	}
+	if dest.Name == "" && src.Name != "" {
+		dest.Name = src.Name
+	}
+	if len(dest.Aliases) == 0 && len(src.Aliases) > 0 {
+		dest.Aliases = src.Aliases
+	}
+	if dest.BirthDate == nil && src.BirthDate != nil {
+		dest.BirthDate = src.BirthDate
+	}
+	if dest.Nationality == nil && src.Nationality != nil {
+		dest.Nationality = src.Nationality
+	}
+	if dest.Ethnicity == nil && src.Ethnicity != nil {
+		dest.Ethnicity = src.Ethnicity
+	}
+	if dest.HairColor == nil && src.HairColor != nil {
+		dest.HairColor = src.HairColor
+	}
+	if dest.EyeColor == nil && src.EyeColor != nil {
+		dest.EyeColor = src.EyeColor
+	}
+	if dest.Height == nil && src.Height != nil {
+		dest.Height = src.Height
+	}
+	if dest.Weight == nil && src.Weight != nil {
+		dest.Weight = src.Weight
+	}
+	if dest.Measurements == nil && src.Measurements != nil {
+		dest.Measurements = src.Measurements
+	}
+	if dest.Tattoos == nil && src.Tattoos != nil {
+		dest.Tattoos = src.Tattoos
+	}
+	if dest.Piercings == nil && src.Piercings != nil {
+		dest.Piercings = src.Piercings
+	}
+	if dest.Biography == nil && src.Biography != nil {
+		dest.Biography = src.Biography
+	}
+	if dest.ImageURL == nil && src.ImageURL != nil {
+		dest.ImageURL = src.ImageURL
+	}
+	if len(dest.ImageURLs) == 0 && len(src.ImageURLs) > 0 {
+		dest.ImageURLs = src.ImageURLs
+	}
+	if dest.ExternalID == nil && src.ExternalID != nil {
+		dest.ExternalID = src.ExternalID
 	}
 }
 

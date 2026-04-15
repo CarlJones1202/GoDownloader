@@ -50,10 +50,15 @@ export function PeoplePage() {
   const [mergeKeepId, setMergeKeepId] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const { data: personList, isLoading } = useQuery({
-    queryKey: ['people', { offset, limit, search: activeSearch || undefined }],
-    queryFn: () => people.list({ limit, offset, search: activeSearch || undefined }),
-  });
+const { data: peopleData, isLoading } = useQuery({
+  queryKey: ['people', { offset, limit, search: activeSearch || undefined }],
+  queryFn: () => people.list({ limit, offset, search: activeSearch || undefined }),
+});
+const personList = peopleData?.items ?? [];
+const totalPages = peopleData?.total_pages ?? 1;
+const currentPage = peopleData?.current_page ?? 1;
+const totalItems = peopleData?.total_items ?? 0;
+const pageSize = peopleData?.page_size ?? limit;
 
   const createMut = useMutation({
     mutationFn: () =>
@@ -282,7 +287,15 @@ export function PeoplePage() {
 })}
 </div>
 
-          <Pagination page={page} hasMore={personList.length === limit} onPrev={prevPage} onNext={nextPage} />
+          <Pagination 
+  page={currentPage}
+  totalPages={totalPages}
+  totalItems={totalItems}
+  pageSize={pageSize}
+  hasMore={currentPage < totalPages}
+  onPrev={prevPage}
+  onNext={nextPage}
+/>
         </>
       )}
 

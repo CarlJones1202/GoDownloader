@@ -27,6 +27,15 @@ export interface Gallery {
   created_at: string;
 }
 
+// Generic paginated response shape
+export interface PaginatedResult<T> {
+  items: T[];
+  total_items: number;
+  total_pages: number;
+  current_page: number;
+  page_size: number;
+}
+
 export interface Image {
   id: number;
   gallery_id?: number;

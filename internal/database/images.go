@@ -152,6 +152,27 @@ func (db *DB) DeleteImage(ctx context.Context, id int64) error {
 	return nil
 }
 
+// FindImageByGalleryAndFilename finds an existing image by gallery_id and filename.
+// Returns ErrNotFound if no matching image exists.
+func (db *DB) FindImageByGalleryAndFilename(ctx context.Context, galleryID *int64, filename string) (*models.Image, error) {
+	var img models.Image
+	err := db.GetContext(ctx, &img,
+		`SELECT id, gallery_id, filename, original_url, width, height,
+		        duration_seconds, file_hash, dominant_colors, is_video, vr_mode,
+		        is_favorite, created_at
+		   FROM images
+		  WHERE gallery_id IS ? AND filename = ?`,
+		galleryID, filename,
+	)
+	if err != nil {
+		if IsNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("finding image: %w", err)
+	}
+	return &img, nil
+}
+
 // UpdateImageFilename updates the filename for an image.
 func (db *DB) UpdateImageFilename(ctx context.Context, id int64, filename string) error {
 	_, err := db.ExecContext(ctx, `UPDATE images SET filename = ? WHERE id = ?`, filename, id)
