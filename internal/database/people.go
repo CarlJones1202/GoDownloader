@@ -28,21 +28,38 @@ func (db *DB) ListPeople(ctx context.Context, f PeopleFilter) ([]models.Person, 
 		f.Limit = 50
 	}
 
-	query := `SELECT ` + personColumns + ` FROM people WHERE 1=1`
-	args := []any{}
+	query := `
+SELECT 
+	p.*, 
+	COALESCE(gc.gallery_count, 0) AS gallery_count
+FROM people p
+LEFT JOIN (
+	SELECT person_id, COUNT(*) AS gallery_count
+	FROM gallery_persons
+	GROUP BY person_id
+) gc ON gc.person_id = p.id
+`
 
-	if f.Search != nil {
-		query += " AND name LIKE ?"
+	args := []any{}
+	clauses := []string{}
+
+	if f.Search != nil && *f.Search != "" {
+		clauses = append(clauses, "p.name LIKE ?")
 		args = append(args, "%"+*f.Search+"%")
 	}
 
-	query += " ORDER BY name ASC LIMIT ? OFFSET ?"
+	if len(clauses) > 0 {
+		query += " WHERE " + strings.Join(clauses, " AND ")
+	}
+
+	query += " ORDER BY p.name ASC LIMIT ? OFFSET ?"
 	args = append(args, f.Limit, f.Offset)
 
 	people := []models.Person{}
 	if err := db.SelectContext(ctx, &people, query, args...); err != nil {
 		return nil, fmt.Errorf("listing people: %w", err)
 	}
+
 	return people, nil
 }
 

@@ -32,6 +32,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { usePagination } from '@/hooks/usePagination';
+import { CoverGrid } from '@/components/CoverGrid';
 
 function parsePhotos(photos?: string): string[] {
   if (!photos) return [];
@@ -512,22 +513,20 @@ export function PersonDetailPage() {
               <h2 className="text-lg font-semibold text-white">Identifiers</h2>
               <span className="text-sm text-zinc-500">External matches and references</span>
             </div>
-            <Card className="rounded-2xl border-white/5 bg-white/2 shadow-none">
-              {loadingIds ? (
+<div className="py-4">
+               {loadingIds ? (
                 <Spinner />
               ) : !identifiers || identifiers.length === 0 ? (
                 <EmptyState message="No external identifiers linked." />
               ) : (
-                <div className="space-y-3">
-                  {identifiers.map((ident) => (
-                        <div key={ident.id} className="flex items-center justify-between rounded-xl bg-black/10 px-4 py-2 ring-1 ring-white/3">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="info">{ident.provider}</Badge>
-                        <span className="font-mono text-sm text-zinc-200">{ident.external_id}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+<div className="flex flex-row flex-wrap gap-2 px-1 py-2">
+  {identifiers.map((ident) => (
+    <span key={ident.id} className="flex items-center gap-2 rounded-xl bg-zinc-800 px-3 py-1 text-xs font-medium text-zinc-100 shadow-sm">
+      <Badge className="text-[10px] px-2 py-0.5 bg-zinc-700 mr-1" variant="info">{ident.provider}</Badge>
+      <span className="font-mono tracking-normal text-xs text-zinc-200">{ident.external_id}</span>
+    </span>
+  ))}
+</div>
               )}
 
               <div className="mt-4 grid gap-2 sm:grid-cols-[160px,1fr,auto] sm:items-end">
@@ -537,8 +536,8 @@ export function PersonDetailPage() {
                   <Plus size={14} /> Add
                 </Button>
               </div>
-            </Card>
-          </section>
+             </div>
+           </section>
 
           <section>
             <div className="mb-3 flex items-center justify-between">
