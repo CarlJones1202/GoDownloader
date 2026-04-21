@@ -2,8 +2,10 @@
 package handlers
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/carlj/godownload/internal/database"
 	"github.com/carlj/godownload/internal/models"
@@ -15,15 +17,16 @@ import (
 
 // AdminHandler handles HTTP requests for the /api/v1/admin resource.
 type AdminHandler struct {
-	db       *database.DB
-	crawler  *crawler.Crawler
-	queueMgr *queue.Manager
-	linker   *linker.AutoLinker
+	db              *database.DB
+	crawler         *crawler.Crawler
+	queueMgr        *queue.Manager
+	linker          *linker.AutoLinker
+	requestShutdown func(reason string) bool
 }
 
 // NewAdminHandler creates an AdminHandler.
-func NewAdminHandler(db *database.DB, c *crawler.Crawler, qm *queue.Manager, al *linker.AutoLinker) *AdminHandler {
-	return &AdminHandler{db: db, crawler: c, queueMgr: qm, linker: al}
+func NewAdminHandler(db *database.DB, c *crawler.Crawler, qm *queue.Manager, al *linker.AutoLinker, requestShutdown func(reason string) bool) *AdminHandler {
+	return &AdminHandler{db: db, crawler: c, queueMgr: qm, linker: al, requestShutdown: requestShutdown}
 }
 
 // RegisterRoutes registers all admin routes on the given group.
@@ -40,6 +43,7 @@ func (h *AdminHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/images/redownload", h.bulkRedownload)
 	rg.POST("/galleries/cleanup", h.galleryCleanup)
 	rg.POST("/galleries/autolink", h.autolinkGalleries)
+	rg.POST("/server/stop", h.stopServer)
 }
 
 // stats returns aggregate statistics about the system.
@@ -317,7 +321,7 @@ func (h *AdminHandler) galleryCleanup(c *gin.Context) {
 // autolinkGalleries triggers a global scan to link galleries to people based on
 // name matches in titles and source URLs.
 func (h *AdminHandler) autolinkGalleries(c *gin.Context) {
-	linked, err := h.linker.ScanAllGalleries(c.Request.Context())
+	linked, err := h.linker.ScanAllGalleries(context.Background())
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, "autolink failed: "+err.Error())
 		return
@@ -327,6 +331,37 @@ func (h *AdminHandler) autolinkGalleries(c *gin.Context) {
 		"message": "autolink scan complete",
 		"linked":  linked,
 	})
+}
+
+type stopServerRequest struct {
+	Confirm string `json:"confirm"`
+}
+
+// stopServer requests a graceful server shutdown.
+// Requires an explicit confirmation phrase in the request body.
+func (h *AdminHandler) stopServer(c *gin.Context) {
+	if h.requestShutdown == nil {
+		respondError(c, http.StatusNotImplemented, "server stop is not configured")
+		return
+	}
+
+	var req stopServerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.TrimSpace(strings.ToUpper(req.Confirm)) != "STOP" {
+		respondError(c, http.StatusBadRequest, `confirmation must be "STOP"`)
+		return
+	}
+
+	h.queueMgr.Pause()
+	if !h.requestShutdown("requested via admin API") {
+		respondError(c, http.StatusConflict, "shutdown already in progress")
+		return
+	}
+	slog.Warn("admin: graceful server shutdown requested")
+	respondOK(c, gin.H{"message": "server shutdown requested"})
 }
 
 func boolPtr(b bool) *bool { return &b }

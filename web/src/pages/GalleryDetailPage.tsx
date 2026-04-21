@@ -162,7 +162,7 @@ export function GalleryDetailPage() {
   // Build justified grid items from image list.
   const gridItems: JustifiedItem[] = useMemo(() => {
     if (!imageList) return [];
-    return imageList.map((img) => {
+    return imageList.items.map((img) => {
       const colors = parseColors(img.dominant_colors);
       return {
         id: img.id,
@@ -232,7 +232,7 @@ export function GalleryDetailPage() {
   // Build lightbox images (full-size URLs).
   const lightboxImages = useMemo(() => {
     if (!imageList) return [];
-    return imageList.map((img) => ({
+    return imageList.items.map((img) => ({
       src: `/data/images/${img.filename}`,
       alt: img.filename,
     }));
@@ -307,7 +307,7 @@ export function GalleryDetailPage() {
             </p>
           )}
           <p>Created: {formatDate(gallery.created_at)}</p>
-          {imageList && <p>{imageList.length} images</p>}
+          {imageList && <p>{imageList.total_items} images</p>}
         </div>
 
         {/* Metadata display */}
@@ -370,7 +370,7 @@ export function GalleryDetailPage() {
       {/* Images grid */}
       {loadingImages ? (
         <Spinner />
-      ) : !imageList || imageList.length === 0 ? (
+      ) : !imageList || imageList.items.length === 0 ? (
         <EmptyState message="No images in this gallery." />
       ) : (
         <JustifiedGrid
@@ -388,7 +388,7 @@ export function GalleryDetailPage() {
           index={lightboxIndex}
           onClose={() => setLightboxIndex(null)}
           onIndexChange={setLightboxIndex}
-          imageData={imageList}
+          imageData={imageList.items}
           onToggleFavorite={(id) => favMut.mutate(id)}
         />
       )}

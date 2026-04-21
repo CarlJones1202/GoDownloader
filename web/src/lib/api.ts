@@ -95,7 +95,7 @@ export interface ImageListParams extends PaginationParams {
 
 export const images = {
   list: (params: ImageListParams = {}) =>
-    request<Image[]>(`/images${qs(params)}`),
+    request<PaginatedResult<Image>>(`/images${qs(params)}`),
   get: (id: number) => request<Image>(`/images/${id}`),
   delete: (id: number) => request<void>(`/images/${id}`, { method: 'DELETE' }),
   toggleFavorite: (id: number) =>
@@ -201,4 +201,9 @@ export const admin = {
     ),
   autolinkGalleries: () =>
     request<{ message: string; linked: number }>('/admin/galleries/autolink', { method: 'POST' }),
+  stopServer: () =>
+    request<{ message: string }>('/admin/server/stop', {
+      method: 'POST',
+      body: JSON.stringify({ confirm: 'STOP' }),
+    }),
 };

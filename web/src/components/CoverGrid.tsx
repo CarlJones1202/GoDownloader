@@ -75,13 +75,11 @@ function CoverGridCard({ item, onDelete }: CoverGridCardProps) {
 
       {/* Hover overlay with actions */}
       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-3">
-        <Link
-          to={`/galleries/${item.id}`}
+        <div
           className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors"
-          onClick={(e) => e.stopPropagation()}
         >
           <Eye size={20} className="text-white" />
-        </Link>
+        </div>
         {onDelete && (
           <button
             onClick={(e) => {

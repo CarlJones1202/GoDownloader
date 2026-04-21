@@ -36,13 +36,14 @@ func (al *AutoLinker) LinkPerson(ctx context.Context, person *models.Person) (in
 	seenGalleries := make(map[int64]bool)
 
 	for _, term := range searchTerms {
-		// Search in Title
+		slog.Debug("autolink: searching titles", "term", term)
 		titleGIDs, err := al.db.FindGalleriesByTitleMatch(ctx, term)
 		if err != nil {
 			slog.Warn("autolink: error searching titles", "term", term, "error", err)
 		}
 
 		// Search in SourceURL
+		slog.Debug("autolink: searching urls", "term", term)
 		urlGIDs, err := al.db.FindGalleriesBySourceURLMatch(ctx, term)
 		if err != nil {
 			slog.Warn("autolink: error searching source urls", "term", term, "error", err)
@@ -129,16 +130,19 @@ func (al *AutoLinker) LinkGallery(ctx context.Context, gallery *models.Gallery) 
 		for _, term := range searchTerms {
 			// Check Title
 			if gallery.Title != nil && strings.Contains(strings.ToLower(*gallery.Title), strings.ToLower(term)) {
+				slog.Debug("autolink: match found in title", "person", p.Name, "gallery", *gallery.Title, "term", term)
 				match = true
 				break
 			}
 			// Check SourceURL
 			if gallery.SourceURL != nil && strings.Contains(strings.ToLower(*gallery.SourceURL), strings.ToLower(term)) {
+				slog.Debug("autolink: match found in source_url", "person", p.Name, "url", *gallery.SourceURL, "term", term)
 				match = true
 				break
 			}
 			// Backwards compatibility/fallback to 'URL' if SourceURL is nil
 			if gallery.SourceURL == nil && gallery.URL != nil && strings.Contains(strings.ToLower(*gallery.URL), strings.ToLower(term)) {
+				slog.Debug("autolink: match found in url", "person", p.Name, "url", *gallery.URL, "term", term)
 				match = true
 				break
 			}
@@ -237,16 +241,23 @@ func (al *AutoLinker) collectSearchTerms(person *models.Person) []string {
 		if strings.Contains(term, " ") {
 			plus := strings.ReplaceAll(term, " ", "+")
 			finalTerms = append(finalTerms, plus)
+
+			hyphen := strings.ReplaceAll(term, " ", "-")
+			finalTerms = append(finalTerms, hyphen)
+
+			underscore := strings.ReplaceAll(term, " ", "_")
+			finalTerms = append(finalTerms, underscore)
 		}
 	}
 
-	// Final deduplication
+	// Final deduplication and lowercase normalization for consistent matching
 	dedupMap := make(map[string]bool)
 	result := make([]string, 0, len(finalTerms))
 	for _, t := range finalTerms {
-		if !dedupMap[t] {
-			dedupMap[t] = true
-			result = append(result, t)
+		low := strings.ToLower(t)
+		if !dedupMap[low] {
+			dedupMap[low] = true
+			result = append(result, low)
 		}
 	}
 

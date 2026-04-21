@@ -26,6 +26,7 @@ import {
   XCircle,
   Clock,
   Layers,
+  Sparkles,
 } from 'lucide-react';
 import { usePagination } from '@/hooks/usePagination';
 
@@ -62,6 +63,7 @@ export function AdminPage() {
   const [clearStatus, setClearStatus] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmCleanup, setConfirmCleanup] = useState(false);
+  const [confirmStopServer, setConfirmStopServer] = useState(false);
 
   // --- Queries ---
 
@@ -129,6 +131,21 @@ export function AdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gallery-cleanup-preview'] });
       setConfirmCleanup(false);
+    },
+  });
+  
+  const autolinkMut = useMutation({
+    mutationFn: admin.autolinkGalleries,
+    onSuccess: (data) => {
+      alert(`Autolink scan complete: ${data.linked} new links created.`);
+    },
+  });
+
+  const stopServerMut = useMutation({
+    mutationFn: admin.stopServer,
+    onSuccess: () => {
+      setConfirmStopServer(false);
+      alert('Server shutdown requested. The API should stop within a few seconds.');
     },
   });
 
@@ -292,30 +309,87 @@ export function AdminPage() {
       )}
 
       {/* Gallery Cleanup */}
-      <h2 className="text-lg font-semibold text-white mt-8 mb-3">Gallery Cleanup</h2>
-      <Card>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-zinc-300">
-              Find and remove orphaned images not linked to any gallery.
-            </p>
-            {cleanupPreview && (
-              <p className="text-sm text-zinc-400 mt-1">
-                <Layers size={14} className="inline mr-1" />
-                {cleanupPreview.count ?? 0} orphaned images found (dry run).
-              </p>
-            )}
-          </div>
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={() => setConfirmCleanup(true)}
-            disabled={!cleanupPreview || (cleanupPreview.count ?? 0) === 0}
-          >
-            <Trash2 size={14} /> Clean Up
-          </Button>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8 mb-3">
+        <div>
+          <h2 className="text-lg font-semibold text-white mb-3">Gallery Cleanup</h2>
+          <Card>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-zinc-300">
+                  Find and remove orphaned images not linked to any gallery.
+                </p>
+                {cleanupPreview && (
+                  <p className="text-sm text-zinc-400 mt-1">
+                    <Layers size={14} className="inline mr-1" />
+                    {cleanupPreview.count ?? 0} orphaned images found (dry run).
+                  </p>
+                )}
+              </div>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setConfirmCleanup(true)}
+                disabled={!cleanupPreview || (cleanupPreview.count ?? 0) === 0}
+              >
+                <Trash2 size={14} /> Clean Up
+              </Button>
+            </div>
+          </Card>
         </div>
-      </Card>
+
+        <div>
+          <h2 className="text-lg font-semibold text-white mb-3">Linker Tools</h2>
+          <Card>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-zinc-300">
+                  Scan all galleries and link them to people based on name/alias matches.
+                </p>
+                <p className="text-xs text-zinc-500 mt-1">
+                  This runs the same process that happens automatically during crawling.
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => autolinkMut.mutate()}
+                disabled={autolinkMut.isPending}
+              >
+                {autolinkMut.isPending ? (
+                  <Spinner size="sm" className="mr-1" />
+                ) : (
+                  <Sparkles size={14} className="mr-1" />
+                )}
+                Run Autolink
+              </Button>
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <h2 className="text-lg font-semibold text-white mb-3">Server Control</h2>
+        <Card>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-zinc-300">
+                Gracefully stop the API server. Active work is allowed to finish and queue processing is paused first.
+              </p>
+              <p className="text-xs text-zinc-500 mt-1">
+                Use this only when an external process manager will restart the service.
+              </p>
+            </div>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => setConfirmStopServer(true)}
+              disabled={stopServerMut.isPending}
+            >
+              <Pause size={14} /> Stop Server
+            </Button>
+          </div>
+        </Card>
+      </div>
 
       {/* Confirm dialogs */}
       <ConfirmDialog
@@ -334,6 +408,15 @@ export function AdminPage() {
         confirmLabel="Delete Orphans"
         onConfirm={() => cleanupMut.mutate()}
         onCancel={() => setConfirmCleanup(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmStopServer}
+        title="Stop Server"
+        message="Request a graceful server shutdown? The API will stop accepting requests shortly."
+        confirmLabel="Stop Server"
+        onConfirm={() => stopServerMut.mutate()}
+        onCancel={() => setConfirmStopServer(false)}
       />
     </>
   );

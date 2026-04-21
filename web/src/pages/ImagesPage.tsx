@@ -79,7 +79,7 @@ export function ImagesPage() {
 
   const displayImages = activeColorSearch
     ? (colorResults ?? []).map((r) => r.image)
-    : (imageList ?? []);
+    : (imageList?.items ?? []);
 
   const loading = activeColorSearch ? isColorLoading : isLoading;
 
@@ -221,12 +221,13 @@ export function ImagesPage() {
             onItemClick={(index) => setLightboxIndex(index)}
           />
 
-          {!activeColorSearch && (
+          {!activeColorSearch && imageList && (
             <Pagination
-              page={page}
-              hasMore={displayImages.length === limit}
+              page={imageList.current_page}
+              totalPages={imageList.total_pages}
               onPrev={prevPage}
               onNext={nextPage}
+              hasMore={imageList.current_page < imageList.total_pages}
             />
           )}
         </>

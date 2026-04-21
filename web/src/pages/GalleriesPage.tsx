@@ -44,7 +44,7 @@ export function GalleriesPage() {
   const coverItems = galleryList?.items.map((g) => ({
     id: g.id,
     title: g.title ?? null,
-    thumbnailPath: g.local_thumbnail_path,
+    thumbnailPath: g.local_thumbnail_path ? g.local_thumbnail_path.split('/').pop() : undefined,
     provider: g.provider,
     createdAt: g.created_at,
     url: g.url,

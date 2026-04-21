@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
@@ -148,7 +149,7 @@ func (h *GalleryHandler) create(c *gin.Context) {
 
 	// Auto-link new gallery to people
 	if h.linker != nil {
-		go h.linker.LinkGallery(c.Request.Context(), g) //nolint:errcheck
+		go h.linker.LinkGallery(context.Background(), g) //nolint:errcheck
 	}
 
 	respondCreated(c, g)

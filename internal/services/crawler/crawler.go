@@ -406,6 +406,7 @@ func (c *Crawler) ensureGallery(ctx context.Context, sourceID int64, title, sour
 		SourceID: &sourceID,
 		Title:    &title,
 		URL:      &sourceURL,
+		SourceURL: &sourceURL,
 	}
 	if err := c.db.CreateGallery(ctx, g); err != nil {
 		return 0, fmt.Errorf("creating gallery: %w", err)
@@ -413,7 +414,7 @@ func (c *Crawler) ensureGallery(ctx context.Context, sourceID int64, title, sour
 
 	// Auto-link new gallery to people
 	if c.linker != nil {
-		go c.linker.LinkGallery(ctx, g) //nolint:errcheck
+		go c.linker.LinkGallery(context.Background(), g) //nolint:errcheck
 	}
 
 	return g.ID, nil

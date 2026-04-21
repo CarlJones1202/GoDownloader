@@ -24,7 +24,7 @@ type PeopleFilter struct {
 
 // ListPeople returns a paginated list of people.
 func (db *DB) ListPeople(ctx context.Context, f PeopleFilter) ([]models.Person, error) {
-	if f.Limit <= 0 {
+	if f.Limit == 0 {
 		f.Limit = 50
 	}
 
@@ -52,8 +52,11 @@ LEFT JOIN (
 		query += " WHERE " + strings.Join(clauses, " AND ")
 	}
 
-	query += " ORDER BY p.name ASC LIMIT ? OFFSET ?"
-	args = append(args, f.Limit, f.Offset)
+	query += " ORDER BY p.name ASC"
+	if f.Limit > 0 {
+		query += " LIMIT ? OFFSET ?"
+		args = append(args, f.Limit, f.Offset)
+	}
 
 	people := []models.Person{}
 	if err := db.SelectContext(ctx, &people, query, args...); err != nil {
@@ -263,8 +266,8 @@ func (db *DB) FindGalleriesByTitleMatch(ctx context.Context, name string) ([]int
 		ID int64 `db:"id"`
 	}{}
 	err := db.SelectContext(ctx, &rows,
-		`SELECT id FROM galleries WHERE title LIKE ? COLLATE NOCASE`,
-		"%"+name+"%",
+		`SELECT id FROM galleries WHERE (title LIKE ? OR url LIKE ? OR source_url LIKE ?) COLLATE NOCASE`,
+		"%"+name+"%", "%"+name+"%", "%"+name+"%",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("finding galleries matching title %q: %w", name, err)
@@ -284,8 +287,8 @@ func (db *DB) FindGalleriesBySourceURLMatch(ctx context.Context, pattern string)
 		ID int64 `db:"id"`
 	}{}
 	err := db.SelectContext(ctx, &rows,
-		`SELECT id FROM galleries WHERE source_url LIKE ? COLLATE NOCASE`,
-		"%"+pattern+"%",
+		`SELECT id FROM galleries WHERE (source_url LIKE ? OR url LIKE ?) COLLATE NOCASE`,
+		"%"+pattern+"%", "%"+pattern+"%",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("finding galleries matching source_url %q: %w", pattern, err)

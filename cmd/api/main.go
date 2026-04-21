@@ -116,13 +116,23 @@ func main() {
 	queueMgr.Start()
 	defer queueMgr.Stop()
 
+	shutdownRequests := make(chan string, 1)
+	requestShutdown := func(reason string) bool {
+		select {
+		case shutdownRequests <- reason:
+			return true
+		default:
+			return false
+		}
+	}
+
 	// Gallery metadata service — uses VPN-aware client for age-gated provider APIs.
 	metadataSvc := providers.NewGalleryMetadataService(vpnSvc.GetHTTPClient, cfg.Crawler.UserAgent)
 
 	// Create photoDownloader for use in both router and async startup scan
 	photoDownloader := personphoto.NewDownloader(cfg.Storage.PersonPhotosDir, httpClient, "")
 
-	router := buildRouter(db, crawlerSvc, queueMgr, autoLinker, enricher, cfg.Storage, wsHub, metadataSvc, httpClient, photoDownloader)
+	router := buildRouter(db, crawlerSvc, queueMgr, autoLinker, enricher, cfg.Storage, wsHub, metadataSvc, httpClient, photoDownloader, requestShutdown)
 
 	srv := &http.Server{
 		Addr:         cfg.Addr(),
@@ -142,14 +152,20 @@ func main() {
 	}()
 
 	// Run missing file scans asynchronously so the API is available immediately.
-	go runMissingFileScans(db, cfg, photoDownloader)
+	go runMissingFileScans(db, cfg, photoDownloader, enricher)
 
 	// Block until a termination signal is received.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	stopReason := "termination signal"
+	select {
+	case sig := <-quit:
+		stopReason = "signal: " + sig.String()
+	case reason := <-shutdownRequests:
+		stopReason = reason
+	}
 
-	slog.Info("shutting down server...")
+	slog.Warn("shutting down server...", "reason", stopReason)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -163,7 +179,7 @@ func main() {
 }
 
 // buildRouter wires up all routes and returns the configured gin.Engine.
-func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.Manager, al *linker.AutoLinker, enricher *providers.Enricher, storage config.StorageConfig, wsHub *ws.Hub, metadataSvc *providers.GalleryMetadataService, httpClient *http.Client, photoDownloader *personphoto.Downloader) *gin.Engine {
+func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.Manager, al *linker.AutoLinker, enricher *providers.Enricher, storage config.StorageConfig, wsHub *ws.Hub, metadataSvc *providers.GalleryMetadataService, httpClient *http.Client, photoDownloader *personphoto.Downloader, requestShutdown func(reason string) bool) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.New()
@@ -178,7 +194,7 @@ func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.M
 	handlers.NewImageHandler(db, storage).RegisterRoutes(v1.Group("/images"))
 	handlers.NewVideoHandler(db).RegisterRoutes(v1.Group("/videos"))
 	handlers.NewPeopleHandler(db, al, enricher, photoDownloader).RegisterRoutes(v1.Group("/people"))
-	handlers.NewAdminHandler(db, crawlerSvc, queueMgr, al).RegisterRoutes(v1.Group("/admin"))
+	handlers.NewAdminHandler(db, crawlerSvc, queueMgr, al, requestShutdown).RegisterRoutes(v1.Group("/admin"))
 
 	// Health check endpoint.
 	r.GET("/health", func(c *gin.Context) {
@@ -256,15 +272,20 @@ func setupLogger(cfg config.LogConfig) {
 	slog.SetDefault(slog.New(handler))
 }
 
-func runMissingFileScans(db *database.DB, cfg *config.Config, photoDownloader *personphoto.Downloader) {
+func runMissingFileScans(db *database.DB, cfg *config.Config, photoDownloader *personphoto.Downloader, enricher *providers.Enricher) {
+	slog.Warn("startup: beginning missing file scans")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
+	// Prioritize person-photo recovery so profile images are restored quickly
+	// and are not blocked behind large image queue scans.
+	scanMissingPersonPhotos(ctx, db, cfg, photoDownloader, enricher)
 	scanMissingImages(ctx, db, cfg)
-	scanMissingPersonPhotos(ctx, db, cfg, photoDownloader)
+	slog.Warn("startup: missing file scans finished")
 }
 
 func scanMissingImages(ctx context.Context, db *database.DB, cfg *config.Config) {
+	slog.Warn("startup: beginning image file restore scan")
 	favorite := true
 	nonFavorite := false
 
@@ -282,6 +303,7 @@ func scanMissingImages(ctx context.Context, db *database.DB, cfg *config.Config)
 
 	missingCount := 0
 	queueFailures := 0
+	pendingOrActiveSkipped := 0
 
 	processMissing := func(imgs []models.Image, priorityLog bool) {
 		for _, img := range imgs {
@@ -309,7 +331,7 @@ func scanMissingImages(ctx context.Context, db *database.DB, cfg *config.Config)
 					}
 					slog.Info("deleted completed item, will re-queue", "image_id", img.ID, "queue_id", existingItem.ID, "priority_favorite", priorityLog)
 				} else if existingItem.Status == string(models.QueueStatusPending) || existingItem.Status == string(models.QueueStatusActive) {
-					slog.Info("already pending/active in queue (skipped)", "image_id", img.ID, "queue_id", existingItem.ID, "status", existingItem.Status, "priority_favorite", priorityLog)
+					pendingOrActiveSkipped++
 					continue
 				} else {
 					if err := db.UpdateQueueStatus(ctx, existingItem.ID, models.QueueStatusPending, nil); err != nil {
@@ -351,10 +373,11 @@ func scanMissingImages(ctx context.Context, db *database.DB, cfg *config.Config)
 	processMissing(favoriteImages, true)
 	processMissing(regularImages, false)
 
-	slog.Info("missing image scan complete", "missing_found", missingCount, "queue_failures", queueFailures)
+	slog.Warn("startup: image file restore scan complete", "missing_found", missingCount, "pending_or_active_skipped", pendingOrActiveSkipped, "queue_failures", queueFailures)
 }
 
-func scanMissingPersonPhotos(ctx context.Context, db *database.DB, cfg *config.Config, photoDownloader *personphoto.Downloader) {
+func scanMissingPersonPhotos(ctx context.Context, db *database.DB, cfg *config.Config, photoDownloader *personphoto.Downloader, enricher *providers.Enricher) {
+	slog.Warn("startup: beginning person photo restore scan")
 	people, err := db.ListPeople(ctx, database.PeopleFilter{Limit: -1})
 	if err != nil {
 		slog.Error("startup: failed to list people for missing photo check", "error", err)
@@ -362,27 +385,49 @@ func scanMissingPersonPhotos(ctx context.Context, db *database.DB, cfg *config.C
 	}
 
 	missingPhotoCount := 0
+	peopleNeedingRestore := 0
+	noURLsCount := 0
+	restoreAttemptCount := 0
+	restoreFailedCount := 0
 	for _, p := range people {
 		photoPaths := decodePhotoPaths(p.Photos)
-		if len(photoPaths) == 0 {
-			continue
-		}
-		missingPhoto := false
-		for _, photoPath := range photoPaths {
-			fullPath := filepath.Join(cfg.Storage.PersonPhotosDir, strings.TrimPrefix(photoPath, "/data/person_photos/"))
-			if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-				missingPhoto = true
-				break
+		needsRestore := len(photoPaths) == 0
+		if !needsRestore {
+			for _, photoPath := range photoPaths {
+				fullPath := filepath.Join(cfg.Storage.PersonPhotosDir, strings.TrimPrefix(photoPath, "/data/person_photos/"))
+				if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+					needsRestore = true
+					break
+				}
 			}
 		}
-		if !missingPhoto {
+		if !needsRestore {
 			continue
 		}
+		peopleNeedingRestore++
+		slog.Info("startup person photo restore needed", "person_id", p.ID, "name", p.Name, "stored_photo_paths", len(photoPaths))
+
 		photoURLs, err := db.GetPersonPhotoURLs(ctx, p.ID)
-		if err != nil || len(photoURLs) == 0 {
-			slog.Warn("person has missing photos but no stored URLs to re-download", "person_id", p.ID, "name", p.Name)
+		if err != nil {
+			slog.Warn("failed to load stored person photo URLs", "person_id", p.ID, "name", p.Name, "error", err)
+		}
+		slog.Info("startup person photo URL state", "person_id", p.ID, "name", p.Name, "stored_url_count", len(photoURLs))
+		if len(photoURLs) == 0 {
+			photoURLs = recoverPersonPhotoURLs(ctx, db, enricher, p)
+			if len(photoURLs) > 0 {
+				if err := db.SavePersonPhotoURLs(ctx, p.ID, photoURLs); err != nil {
+					slog.Warn("failed to persist recovered person photo URLs", "person_id", p.ID, "name", p.Name, "error", err)
+				}
+				slog.Info("startup person photo URLs recovered", "person_id", p.ID, "name", p.Name, "recovered_url_count", len(photoURLs))
+			}
+		}
+		if len(photoURLs) == 0 {
+			noURLsCount++
+			slog.Warn("person needs photo restore but no photo URLs were found", "person_id", p.ID, "name", p.Name)
 			continue
 		}
+		restoreAttemptCount++
+
 		downloadedPaths := photoDownloader.DownloadAll(ctx, photoURLs, p.ID)
 		if len(downloadedPaths) > 0 {
 			merged := mergePhotoPaths(decodePhotoPaths(p.Photos), downloadedPaths)
@@ -397,9 +442,83 @@ func scanMissingPersonPhotos(ctx context.Context, db *database.DB, cfg *config.C
 					missingPhotoCount++
 				}
 			}
+		} else {
+			restoreFailedCount++
+			slog.Warn("startup person photo restore attempted but no photos downloaded", "person_id", p.ID, "name", p.Name, "url_count", len(photoURLs))
 		}
 	}
-	slog.Info("missing person photo scan complete", "people_photos_restored", missingPhotoCount)
+	slog.Warn("startup: person photo restore scan complete",
+		"people_total", len(people),
+		"people_needing_restore", peopleNeedingRestore,
+		"restore_attempts", restoreAttemptCount,
+		"people_photos_restored", missingPhotoCount,
+		"restore_attempts_without_downloads", restoreFailedCount,
+		"missing_url_sources", noURLsCount,
+	)
+}
+
+func recoverPersonPhotoURLs(ctx context.Context, db *database.DB, enricher *providers.Enricher, p models.Person) []string {
+	if enricher == nil {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	var recovered []string
+
+	addURLs := func(urls []string) {
+		for _, u := range urls {
+			if u == "" {
+				continue
+			}
+			if _, ok := seen[u]; ok {
+				continue
+			}
+			seen[u] = struct{}{}
+			recovered = append(recovered, u)
+		}
+	}
+	addInfoURLs := func(info *providers.PersonInfo) {
+		if info == nil {
+			return
+		}
+		addURLs(info.ImageURLs)
+		if info.ImageURL != nil && *info.ImageURL != "" {
+			addURLs([]string{*info.ImageURL})
+		}
+	}
+
+	ids, err := db.ListPersonIdentifiers(ctx, p.ID)
+	if err != nil {
+		slog.Warn("failed to list person identifiers for photo URL recovery", "person_id", p.ID, "name", p.Name, "error", err)
+	} else {
+		if len(ids) > 0 {
+			slog.Info("startup person photo recovery: trying identifiers", "person_id", p.ID, "name", p.Name, "identifier_count", len(ids))
+			// If we have provider IDs, recover photos the same way as first-time identify:
+			// fetch provider records by external ID and use returned image URLs.
+			for _, ident := range ids {
+				info, lookupErr := enricher.GetByExternalID(ctx, ident.Provider, ident.ExternalID)
+				if lookupErr != nil {
+					slog.Debug("startup person photo recovery: identifier lookup failed", "person_id", p.ID, "name", p.Name, "provider", ident.Provider, "external_id", ident.ExternalID, "error", lookupErr)
+					continue
+				}
+				addInfoURLs(info)
+				if len(recovered) > 0 {
+					slog.Info("recovered person photo URLs from identifier lookup", "person_id", p.ID, "name", p.Name, "provider", ident.Provider, "count", len(recovered))
+					return recovered
+				}
+			}
+			slog.Warn("person has identifiers but no photo URLs recovered from provider ID lookups", "person_id", p.ID, "name", p.Name, "identifier_count", len(ids))
+			return nil
+		}
+	}
+
+	slog.Info("startup person photo recovery: no identifiers, trying name lookup", "person_id", p.ID, "name", p.Name)
+	byName := enricher.LookupPerson(ctx, p.Name)
+	addInfoURLs(&byName.Merged)
+	if len(recovered) > 0 {
+		slog.Info("recovered person photo URLs from name lookup", "person_id", p.ID, "name", p.Name, "count", len(recovered))
+	}
+	return recovered
 }
 
 func decodePhotoPaths(photos *string) []string {
