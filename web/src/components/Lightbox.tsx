@@ -138,19 +138,19 @@ export function Lightbox({ images, index, onClose, onIndexChange, imageData, onT
                 {isPlaying ? <Pause size={20} /> : <Play size={20} />}
               </button>
 
-              <div className="flex items-center gap-1 bg-white/5 rounded-lg px-2 py-1">
+              <div className="flex items-center gap-1 bg-white/10 hover:bg-white/20 rounded-lg px-2 py-1 transition-colors">
                 <Timer size={14} className="text-white/40" />
                 <select
                   value={speed}
                   onChange={(e) => setSpeed(Number(e.target.value))}
                   onClick={(e) => e.stopPropagation()}
-                  className="bg-transparent text-white/80 text-xs focus:outline-none cursor-pointer"
+                  className="bg-transparent text-white/90 text-xs focus:outline-none cursor-pointer font-medium [color-scheme:dark]"
                 >
-                  <option value={1000}>1s</option>
-                  <option value={2000}>2s</option>
-                  <option value={3000}>3s</option>
-                  <option value={5000}>5s</option>
-                  <option value={10000}>10s</option>
+                  <option value={1000} className="bg-zinc-900 text-white">1s</option>
+                  <option value={2000} className="bg-zinc-900 text-white">2s</option>
+                  <option value={3000} className="bg-zinc-900 text-white">3s</option>
+                  <option value={5000} className="bg-zinc-900 text-white">5s</option>
+                  <option value={10000} className="bg-zinc-900 text-white">10s</option>
                 </select>
               </div>
             </div>

@@ -60,3 +60,12 @@ func (r *TurboImageHost) Rip(ctx context.Context, pageURL string) ([]string, err
 
 	return nil, fmt.Errorf("turboimagehost: no image found on %s", pageURL)
 }
+
+// RipThumbnail implements ripper.ThumbnailRipper.
+func (r *TurboImageHost) RipThumbnail(_ context.Context, thumbnailURL string) ([]string, error) {
+	// TurboImageHost thumbnail URLs look like:
+	// https://sbd053.turboimagehost.com/t/121631840/MetArt_Soft-Curls_Kira-Rami_high_0085.jpg
+	// Direct URLs look like:
+	// https://sbd053.turboimagehost.com/i/121631840/MetArt_Soft-Curls_Kira-Rami_high_0085.jpg
+	return []string{strings.ReplaceAll(thumbnailURL, "/t/", "/i/")}, nil
+}

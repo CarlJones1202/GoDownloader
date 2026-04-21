@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { admin } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
-import type { DownloadQueue } from '@/types';
+import type { ActiveDownload, DownloadQueue } from '@/types';
 import {
   PageHeader,
   Card,
@@ -27,6 +27,8 @@ import {
   Clock,
   Layers,
   Sparkles,
+  Download,
+  Globe,
 } from 'lucide-react';
 import { usePagination } from '@/hooks/usePagination';
 
@@ -71,6 +73,12 @@ export function AdminPage() {
     queryKey: ['queue-status'],
     queryFn: admin.queue.status,
     refetchInterval: 5000,
+  });
+
+  const { data: activeDownloads } = useQuery({
+    queryKey: ['queue-active'],
+    queryFn: admin.queue.activeDownloads,
+    refetchInterval: 2000,
   });
 
   const { data: queueItems, isLoading: loadingQueue } = useQuery({
@@ -183,6 +191,63 @@ export function AdminPage() {
           </Button>
         )}
       </PageHeader>
+
+      {/* Active Downloads Panel */}
+      {activeDownloads && activeDownloads.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+            <Download size={18} className="text-blue-400 animate-pulse" />
+            Active Downloads
+            <span className="ml-1 text-sm font-normal text-zinc-400">({activeDownloads.length} in flight)</span>
+          </h2>
+
+          {/* Per-provider breakdown */}
+          {queueStatus?.active_by_provider && Object.keys(queueStatus.active_by_provider).length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {Object.entries(queueStatus.active_by_provider)
+                .sort(([, a], [, b]) => b - a)
+                .map(([provider, count]) => (
+                  <div
+                    key={provider}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-950/60 border border-blue-500/30 text-xs"
+                  >
+                    <Globe size={11} className="text-blue-400" />
+                    <span className="text-blue-300 font-medium">{provider}</span>
+                    <span className="text-blue-400 font-bold">{count}</span>
+                  </div>
+                ))}
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            {activeDownloads.map((dl: ActiveDownload) => {
+              const elapsedSec = Math.floor((Date.now() - dl.started_at) / 1000);
+              const elapsed = elapsedSec >= 60
+                ? `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`
+                : `${elapsedSec}s`;
+              // Strip pipe-separated thumbnail suffix for display
+              const displayURL = dl.url.includes('|') ? dl.url.split('|')[0] : dl.url;
+              return (
+                <Card key={dl.id} className="flex items-center gap-3 border-blue-500/20 bg-blue-950/20">
+                  <div className="shrink-0 w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="info">{dl.type}</Badge>
+                      <span className="text-xs font-medium text-blue-300 flex items-center gap-1">
+                        <Globe size={10} />{dl.provider}
+                      </span>
+                    </div>
+                    <p className="text-xs text-zinc-400 truncate mt-0.5">{displayURL}</p>
+                  </div>
+                  <div className="shrink-0 text-xs text-zinc-500 flex items-center gap-1">
+                    <Clock size={11} />{elapsed}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Queue stats */}
       {stats && (

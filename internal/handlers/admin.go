@@ -34,6 +34,7 @@ func (h *AdminHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/stats", h.stats)
 	rg.GET("/queue", h.listQueue)
 	rg.GET("/queue/status", h.queueStatus)
+	rg.GET("/queue/active", h.activeDownloads)
 	rg.POST("/queue/pause", h.queuePause)
 	rg.POST("/queue/resume", h.queueResume)
 	rg.DELETE("/queue", h.clearQueue)
@@ -149,10 +150,43 @@ func (h *AdminHandler) queueStatus(c *gin.Context) {
 		handleDBError(c, err)
 		return
 	}
+
+	// Build per-provider breakdown of active downloads.
+	activeList := h.queueMgr.ActiveDownloads()
+	providerCounts := make(map[string]int, len(activeList))
+	for _, ad := range activeList {
+		providerCounts[ad.Provider]++
+	}
+
 	respondOK(c, gin.H{
-		"paused": h.queueMgr.IsPaused(),
-		"stats":  stats,
+		"paused":          h.queueMgr.IsPaused(),
+		"stats":           stats,
+		"active_by_provider": providerCounts,
 	})
+}
+
+// activeDownloads returns the list of queue items currently being processed.
+func (h *AdminHandler) activeDownloads(c *gin.Context) {
+	type activeDownloadResponse struct {
+		ID        int64  `json:"id"`
+		URL       string `json:"url"`
+		Type      string `json:"type"`
+		Provider  string `json:"provider"`
+		StartedAt int64  `json:"started_at"` // unix millis
+	}
+
+	list := h.queueMgr.ActiveDownloads()
+	out := make([]activeDownloadResponse, 0, len(list))
+	for _, ad := range list {
+		out = append(out, activeDownloadResponse{
+			ID:        ad.ID,
+			URL:       ad.URL,
+			Type:      ad.Type,
+			Provider:  ad.Provider,
+			StartedAt: ad.StartedAt.UnixMilli(),
+		})
+	}
+	respondOK(c, out)
 }
 
 // queuePause pauses queue processing.

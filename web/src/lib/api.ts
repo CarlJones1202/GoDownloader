@@ -1,6 +1,7 @@
 // Typed API client for the GoDownload backend.
 
 import type {
+  ActiveDownload,
   AdminStats,
   ColorSearchResult,
   DownloadQueue,
@@ -181,6 +182,7 @@ export const admin = {
     list: (params: PaginationParams & { status?: string; type?: string } = {}) =>
       request<DownloadQueue[]>(`/admin/queue${qs(params)}`),
     status: () => request<QueueStatus>('/admin/queue/status'),
+    activeDownloads: () => request<ActiveDownload[]>('/admin/queue/active'),
     pause: () => request<{ message: string; paused: boolean }>('/admin/queue/pause', { method: 'POST' }),
     resume: () => request<{ message: string; paused: boolean }>('/admin/queue/resume', { method: 'POST' }),
     clear: (status?: string) =>

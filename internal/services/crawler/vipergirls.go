@@ -21,7 +21,7 @@ var vgTitleRe = regexp.MustCompile(`(?i)<b>([^<]{3,80})</b>`)
 
 // vgImgLinkRe captures <a href="..."><img src="..."></a> pairs from image host links.
 // It captures both the href (group 1) and the img src (group 2).
-var vgImgLinkRe = regexp.MustCompile(`(?i)<a[^>]+href="(https?://(?:www\.)?(?:imagebam\.com|imgbox\.com|imx\.to|turboimagehost\.com|vipr\.im|pixhost\.to|postimages\.org|postimg\.cc|imagetwist\.com|acidimg\.cc|mymypic\.net)[^"]*)"[^>]*>\s*<img[^>]+src="([^"]*)"`)
+var vgImgLinkRe = regexp.MustCompile(`(?i)<a[^>]+href="(https?://(?:www\.)?(?:imagebam\.com|imgbox\.com|imx\.to|turboimagehost\.com|vipr\.im|pixhost\.to|postimages\.org|postimg\.cc|imagetwist\.com|acidimg\.cc|mymypic\.net)[^"]*)"[^>]*>(?:[^<]*|<br[^>]*>|\s)*<img[^>]+src="([^"]*)"`)
 
 // vgLinkRe captures image host links from <a> tags (fallback, no img src).
 var vgLinkRe = regexp.MustCompile(`(?i)<a[^>]+href="(https?://(?:www\.)?(?:imagebam\.com|imgbox\.com|imx\.to|turboimagehost\.com|vipr\.im|pixhost\.to|postimages\.org|postimg\.cc|imagetwist\.com|acidimg\.cc|mymypic\.net)[^"]*)"`)

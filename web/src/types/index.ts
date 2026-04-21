@@ -129,6 +129,15 @@ export interface AdminStats {
 export interface QueueStatus {
   paused: boolean;
   stats: QueueStats;
+  active_by_provider: Record<string, number>;
+}
+
+export interface ActiveDownload {
+  id: number;
+  url: string;
+  type: string;
+  provider: string;
+  started_at: number; // unix millis
 }
 
 export interface ColorSearchResult {

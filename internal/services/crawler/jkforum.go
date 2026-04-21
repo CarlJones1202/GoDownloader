@@ -22,7 +22,7 @@ var jkArticleRe = regexp.MustCompile(`(?s)<(?:article|div[^>]+class="[^"]*(?:art
 var jkTitleRe = regexp.MustCompile(`(?i)<(?:b|strong)>([^<]{3,80})</(?:b|strong)>`)
 
 // jkImgLinkRe captures <a href><img src> pairs.
-var jkImgLinkRe = regexp.MustCompile(`(?i)<a[^>]+href="(https?://(?:www\.)?(?:imagebam\.com|imgbox\.com|imx\.to|turboimagehost\.com|vipr\.im|pixhost\.to|postimages\.org|postimg\.cc|imagetwist\.com|acidimg\.cc|mymypic\.net|mymyatt\.net)[^"]*)"[^>]*>\s*<img[^>]+src="([^"]*)"`)
+var jkImgLinkRe = regexp.MustCompile(`(?i)<a[^>]+href="(https?://(?:www\.)?(?:imagebam\.com|imgbox\.com|imx\.to|turboimagehost\.com|vipr\.im|pixhost\.to|postimages\.org|postimg\.cc|imagetwist\.com|acidimg\.cc|mymypic\.net|mymyatt\.net)[^"]*)"[^>]*>(?:[^<]*|<br[^>]*>|\s)*<img[^>]+src="([^"]*)"`)
 
 // jkLinkRe captures image host links (fallback, same set as ViperGirls plus mymyatt).
 var jkLinkRe = regexp.MustCompile(`(?i)<a[^>]+href="(https?://(?:www\.)?(?:imagebam\.com|imgbox\.com|imx\.to|turboimagehost\.com|vipr\.im|pixhost\.to|postimages\.org|postimg\.cc|imagetwist\.com|acidimg\.cc|mymypic\.net|mymyatt\.net)[^"]*)"`)

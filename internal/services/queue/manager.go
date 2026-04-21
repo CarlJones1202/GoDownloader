@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,8 +18,9 @@ import (
 )
 
 const (
-	defaultPollInterval = 2 * time.Second
-	defaultBatchSize    = 10
+	defaultPollInterval  = 2 * time.Second
+	defaultBatchSize     = 10
+	defaultProviderLimit = 3 // max concurrent downloads per image host
 )
 
 // Processor is the interface that queue item handlers must implement.
@@ -41,14 +44,32 @@ type DBWriter interface {
 	IncrementRetry(ctx context.Context, id int64) error
 }
 
+// ActiveDownload holds information about an in-flight queue item.
+type ActiveDownload struct {
+	ID        int64
+	URL       string
+	Type      string
+	Provider  string
+	StartedAt time.Time
+}
+
 // Manager polls the database for pending queue items and dispatches them
 // to registered processors using a bounded worker pool.
 type Manager struct {
-	db         *database.DB
-	dbWriter   DBWriter
-	processors map[string]Processor
-	workers    int
-	maxRetries int
+	db            *database.DB
+	dbWriter      DBWriter
+	processors    map[string]Processor
+	workers       int
+	providerLimit int // max concurrent downloads per provider
+	maxRetries    int
+
+	// per-provider semaphores (lazy-initialised)
+	providerMu   sync.Mutex
+	providerSems map[string]chan struct{}
+
+	// active downloads for admin visibility
+	activeMu      sync.RWMutex
+	activeDownloads []ActiveDownload
 
 	paused atomic.Bool
 	stopCh chan struct{}
@@ -71,13 +92,90 @@ type statusReporter interface {
 // New creates a Manager with the given number of workers and max retries.
 func New(db *database.DB, dbWriter DBWriter, workers, maxRetries int) *Manager {
 	return &Manager{
-		db:         db,
-		dbWriter:   dbWriter,
-		processors: map[string]Processor{},
-		workers:    workers,
-		maxRetries: maxRetries,
-		stopCh:     make(chan struct{}),
+		db:            db,
+		dbWriter:      dbWriter,
+		processors:    map[string]Processor{},
+		workers:       workers,
+		providerLimit: defaultProviderLimit,
+		maxRetries:    maxRetries,
+		stopCh:        make(chan struct{}),
+		providerSems:  make(map[string]chan struct{}),
 	}
+}
+
+// SetProviderLimit overrides the per-provider concurrency cap (default: 3).
+func (m *Manager) SetProviderLimit(n int) {
+	if n >= 1 {
+		m.providerLimit = n
+	}
+}
+
+// providerSem returns (and lazily creates) the semaphore for a given provider.
+func (m *Manager) providerSem(provider string) chan struct{} {
+	m.providerMu.Lock()
+	defer m.providerMu.Unlock()
+	if ch, ok := m.providerSems[provider]; ok {
+		return ch
+	}
+	ch := make(chan struct{}, m.providerLimit)
+	m.providerSems[provider] = ch
+	return ch
+}
+
+// providerFor extracts a normalised provider key from a queue item URL.
+// For image/video/gallery types it uses the URL hostname; crawl items use
+// the literal string "crawl" so they share a single semaphore.
+func providerFor(item *models.DownloadQueue) string {
+	if item.Type == string(models.QueueTypeCrawl) {
+		return "crawl"
+	}
+	// Strip pipe-separated thumbnail suffix added by the crawler.
+	raw := item.URL
+	if idx := strings.Index(raw, "|"); idx >= 0 {
+		raw = raw[:idx]
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "unknown"
+	}
+	host := strings.ToLower(u.Hostname())
+	// Normalise: strip leading "www."
+	host = strings.TrimPrefix(host, "www.")
+	return host
+}
+
+// ActiveDownloads returns a snapshot of currently-processing queue items.
+func (m *Manager) ActiveDownloads() []ActiveDownload {
+	m.activeMu.RLock()
+	defer m.activeMu.RUnlock()
+	out := make([]ActiveDownload, len(m.activeDownloads))
+	copy(out, m.activeDownloads)
+	return out
+}
+
+// trackStarted records that an item began processing.
+func (m *Manager) trackStarted(item *models.DownloadQueue, provider string) {
+	m.activeMu.Lock()
+	m.activeDownloads = append(m.activeDownloads, ActiveDownload{
+		ID:        item.ID,
+		URL:       item.URL,
+		Type:      item.Type,
+		Provider:  provider,
+		StartedAt: time.Now(),
+	})
+	m.activeMu.Unlock()
+}
+
+// trackFinished removes an item from the active list.
+func (m *Manager) trackFinished(id int64) {
+	m.activeMu.Lock()
+	for i, ad := range m.activeDownloads {
+		if ad.ID == id {
+			m.activeDownloads = append(m.activeDownloads[:i], m.activeDownloads[i+1:]...)
+			break
+		}
+	}
+	m.activeMu.Unlock()
 }
 
 // RegisterProcessor associates a queue type with its processor.
@@ -138,7 +236,7 @@ func (m *Manager) loop() {
 	ticker := time.NewTicker(defaultPollInterval)
 	defer ticker.Stop()
 
-	// Semaphore to bound concurrent workers.
+	// Global semaphore to bound total concurrent workers.
 	sem := make(chan struct{}, m.workers)
 
 	for {
@@ -161,8 +259,26 @@ func (m *Manager) loop() {
 
 			for i := range items {
 				item := items[i]
+				provider := providerFor(&item)
+				provSem := m.providerSem(provider)
 
-				// Acquire slot.
+				// Try to acquire the per-provider slot (non-blocking).
+				// If the provider is already at capacity, skip this item for
+				// now — it will be retried on the next poll tick.
+				select {
+				case provSem <- struct{}{}:
+					// acquired provider slot — continue to acquire global slot
+				default:
+					// Provider at capacity: reset item to pending so it is
+					// picked up again next poll.
+					slog.Debug("queue: provider at capacity, deferring item",
+						"id", item.ID, "provider", provider)
+					_ = m.dbWriter.UpdateQueueStatus(
+						context.Background(), item.ID, models.QueueStatusPending, nil)
+					continue
+				}
+
+				// Acquire global slot (blocking — other items may release it).
 				sem <- struct{}{}
 				m.wg.Add(1)
 				go func() {
@@ -171,10 +287,13 @@ func (m *Manager) loop() {
 							slog.Error("queue: worker panicked", "id", item.ID, "type", item.Type, "panic", r)
 							msg := fmt.Sprintf("panic: %v", r)
 							_ = m.dbWriter.UpdateQueueStatus(context.Background(), item.ID, models.QueueStatusFailed, &msg)
+							m.trackFinished(item.ID)
 						}
-						<-sem // release slot
+						<-provSem // release provider slot
+						<-sem     // release global slot
 						m.wg.Done()
 					}()
+					m.trackStarted(&item, provider)
 					m.dispatch(&item)
 				}()
 			}
@@ -215,6 +334,7 @@ func (m *Manager) dispatch(item *models.DownloadQueue) {
 	if err == nil {
 		slog.Info("queue: item completed", "id", item.ID, "type", item.Type)
 		_ = m.dbWriter.UpdateQueueStatus(statusCtx, item.ID, models.QueueStatusCompleted, nil)
+		m.trackFinished(item.ID)
 		if m.statusTracker != nil {
 			m.statusTracker.ItemCompleted(item.ID)
 		}
@@ -232,6 +352,7 @@ func (m *Manager) dispatch(item *models.DownloadQueue) {
 	if item.RetryCount >= m.maxRetries {
 		msg := err.Error()
 		_ = m.dbWriter.UpdateQueueStatus(statusCtx, item.ID, models.QueueStatusFailed, &msg)
+		m.trackFinished(item.ID)
 		if m.statusTracker != nil {
 			m.statusTracker.ItemFailed(item.ID)
 		}
