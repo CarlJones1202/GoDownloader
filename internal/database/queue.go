@@ -283,3 +283,15 @@ func (db *DB) NextPendingItems(ctx context.Context, n int) ([]models.DownloadQue
 
 	return items, nil
 }
+
+// RetryFailed sets all "failed" items back to "pending" and resets their retry counts.
+func (db *DB) RetryFailed(ctx context.Context) (int64, error) {
+	result, err := db.ExecContext(ctx,
+		`UPDATE download_queue SET status = ?, retry_count = 0 WHERE status = ?`,
+		models.QueueStatusPending, models.QueueStatusFailed,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("retrying failed items: %w", err)
+	}
+	return result.RowsAffected()
+}

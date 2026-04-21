@@ -38,6 +38,7 @@ func (h *AdminHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/queue/resume", h.queueResume)
 	rg.DELETE("/queue", h.clearQueue)
 	rg.POST("/queue/:id/retry", h.retryQueueItem)
+	rg.POST("/queue/retry-failed", h.queueRetryFailed)
 	rg.DELETE("/queue/:id", h.deleteQueueItem)
 	rg.POST("/sources/:id/recrawl", h.recrawlSource)
 	rg.POST("/images/redownload", h.bulkRedownload)
@@ -208,6 +209,15 @@ func (h *AdminHandler) retryQueueItem(c *gin.Context) {
 		return
 	}
 	respondOK(c, gin.H{"message": "queued for retry", "id": id})
+}
+
+func (h *AdminHandler) queueRetryFailed(c *gin.Context) {
+	retried, err := h.db.RetryFailed(c.Request.Context())
+	if err != nil {
+		handleDBError(c, err)
+		return
+	}
+	respondOK(c, gin.H{"retried": retried})
 }
 
 func (h *AdminHandler) deleteQueueItem(c *gin.Context) {

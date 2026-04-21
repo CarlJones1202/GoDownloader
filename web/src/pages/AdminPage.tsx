@@ -118,6 +118,15 @@ export function AdminPage() {
     },
   });
 
+  const retryFailedMut = useMutation({
+    mutationFn: admin.queue.retryFailed,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['queue-items'] });
+      queryClient.invalidateQueries({ queryKey: ['queue-status'] });
+      alert(`Re-queued ${data.retried} failed items.`);
+    },
+  });
+
   const deleteItemMut = useMutation({
     mutationFn: (id: number) => admin.queue.delete(id),
     onSuccess: () => {
@@ -227,6 +236,14 @@ export function AdminPage() {
               onChange={(e) => setClearStatus(e.target.value)}
               className="w-40"
             />
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => retryFailedMut.mutate()}
+              disabled={retryFailedMut.isPending || !stats || stats.failed === 0}
+            >
+              <RotateCcw size={14} /> Retry Failed
+            </Button>
             <Button
               variant="danger"
               size="sm"

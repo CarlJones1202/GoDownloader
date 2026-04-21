@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { galleries, images as imagesApi } from '@/lib/api';
+import { galleries, images as imagesApi, people } from '@/lib/api';
 import { formatDate, parseColors, thumbnailUrl } from '@/lib/utils';
 import {
   PageHeader,
@@ -127,6 +127,17 @@ export function GalleryDetailPage() {
       setConfirmDeleteImageId(null);
     },
   });
+
+  const unlinkPersonMut = useMutation({
+    mutationFn: (personId: number) => people.unlinkGallery(personId, galleryId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gallery-people', galleryId] });
+    },
+  });
+
+  const handleDeleteImage = (imgId: number) => {
+    setConfirmDeleteImageId(imgId);
+  };
 
   // Metadata search
   const openMetadataSearch = useCallback(() => {
@@ -507,6 +518,18 @@ export function GalleryDetailPage() {
                     <span className="text-sm font-medium text-zinc-300 group-hover:text-white transition-colors">
                       {person.name}
                     </span>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        unlinkPersonMut.mutate(person.id);
+                      }}
+                      disabled={unlinkPersonMut.isPending}
+                      className="ml-1 p-1 rounded-full text-zinc-500 hover:text-red-400 hover:bg-red-400/10 opacity-0 group-hover:opacity-100 transition-all"
+                      title={`Unlink ${person.name}`}
+                    >
+                      <X size={12} />
+                    </button>
                   </Link>
                 );
               })}

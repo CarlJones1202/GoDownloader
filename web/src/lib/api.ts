@@ -185,6 +185,8 @@ export const admin = {
       request<{ deleted: number }>(`/admin/queue${qs({ status })}`, { method: 'DELETE' }),
     retry: (id: number) =>
       request<{ message: string }>(`/admin/queue/${id}/retry`, { method: 'POST' }),
+    retryFailed: () =>
+      request<{ retried: number }>('/admin/queue/retry-failed', { method: 'POST' }),
     delete: (id: number) =>
       request<void>(`/admin/queue/${id}`, { method: 'DELETE' }),
   },
