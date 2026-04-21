@@ -163,3 +163,12 @@ func (r *ImageBam) fetchAndParse(ctx context.Context, client *http.Client, pageU
 
 	return "", isInterstitial, nil
 }
+
+// RipThumbnail implements ripper.ThumbnailRipper.
+func (r *ImageBam) RipThumbnail(_ context.Context, thumbnailURL string) ([]string, error) {
+	// ImageBam thumbnail URLs look like:
+	// https://thumbs2.imagebam.com/53/98/12/123456789.jpg
+	// Direct URLs look like:
+	// https://images2.imagebam.com/53/98/12/123456789.jpg
+	return []string{strings.ReplaceAll(thumbnailURL, "thumbs", "images")}, nil
+}

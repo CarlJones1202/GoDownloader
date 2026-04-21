@@ -55,10 +55,16 @@ func (r *ImxTo) Rip(ctx context.Context, pageURL string) ([]string, error) {
 		Jar:     jar,
 	}
 
-	// Step 1: GET the image page.
+	// Step 1: GET the image page (sets session cookies).
+	_, err := r.doGet(ctx, client, pageURL)
+	if err != nil {
+		return nil, fmt.Errorf("imx.to: fetching cookie page: %w", err)
+	}
+
+	// Step 2: GET the page AGAIN with cookies populated.
 	body, err := r.doGet(ctx, client, pageURL)
 	if err != nil {
-		return nil, fmt.Errorf("imx.to: fetching page: %w", err)
+		return nil, fmt.Errorf("imx.to: fetching image page: %w", err)
 	}
 
 	// Try to find the image directly (some pages skip the interstitial).
@@ -136,7 +142,8 @@ func (r *ImxTo) extractImage(body string) string {
 		if !isValidImg(src) {
 			continue
 		}
-		if strings.Contains(src, "imx.to") && strings.Contains(src, "/i/") {
+		// Match any image hosted on imx.to or its i.imx.to CDN
+		if strings.Contains(src, "imx.to") || strings.Contains(src, "img.yt") {
 			return ensureAbsolute(src)
 		}
 	}
@@ -204,4 +211,18 @@ func ensureAbsolute(u string) string {
 		return "https:" + u
 	}
 	return u
+}
+
+// RipThumbnail implements ripper.ThumbnailRipper.
+func (r *ImxTo) RipThumbnail(_ context.Context, thumbnailURL string) ([]string, error) {
+	// imx.to/img.yt thumbnail URLs look like:
+	// https://i.imx.to/t/1234/name.jpg
+	// https://img.yt/t/1234/name.jpg
+	// Direct URLs look like:
+	// https://i.imx.to/i/1234/name.jpg
+	u := thumbnailURL
+	u = strings.ReplaceAll(u, "image.", "i.")
+	u = strings.ReplaceAll(u, "/t/", "/i/")
+	u = strings.ReplaceAll(u, "/u/", "/i/")
+	return []string{ensureAbsolute(u)}, nil
 }

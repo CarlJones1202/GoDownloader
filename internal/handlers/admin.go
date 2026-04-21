@@ -168,22 +168,24 @@ func (h *AdminHandler) queueStatus(c *gin.Context) {
 // activeDownloads returns the list of queue items currently being processed.
 func (h *AdminHandler) activeDownloads(c *gin.Context) {
 	type activeDownloadResponse struct {
-		ID        int64  `json:"id"`
-		URL       string `json:"url"`
-		Type      string `json:"type"`
-		Provider  string `json:"provider"`
-		StartedAt int64  `json:"started_at"` // unix millis
+		ID         int64  `json:"id"`
+		URL        string `json:"url"`
+		Type       string `json:"type"`
+		Provider   string `json:"provider"`
+		SourceName string `json:"source_name,omitempty"`
+		StartedAt  int64  `json:"started_at"` // unix millis
 	}
 
 	list := h.queueMgr.ActiveDownloads()
 	out := make([]activeDownloadResponse, 0, len(list))
 	for _, ad := range list {
 		out = append(out, activeDownloadResponse{
-			ID:        ad.ID,
-			URL:       ad.URL,
-			Type:      ad.Type,
-			Provider:  ad.Provider,
-			StartedAt: ad.StartedAt.UnixMilli(),
+			ID:         ad.ID,
+			URL:        ad.URL,
+			Type:       ad.Type,
+			Provider:   ad.Provider,
+			SourceName: ad.SourceName,
+			StartedAt:  ad.StartedAt.UnixMilli(),
 		})
 	}
 	respondOK(c, out)

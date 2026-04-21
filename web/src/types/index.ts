@@ -137,6 +137,7 @@ export interface ActiveDownload {
   url: string;
   type: string;
   provider: string;
+  source_name?: string;
   started_at: number; // unix millis
 }
 

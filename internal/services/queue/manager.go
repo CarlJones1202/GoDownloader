@@ -46,11 +46,12 @@ type DBWriter interface {
 
 // ActiveDownload holds information about an in-flight queue item.
 type ActiveDownload struct {
-	ID        int64
-	URL       string
-	Type      string
-	Provider  string
-	StartedAt time.Time
+	ID         int64
+	URL        string
+	Type       string
+	Provider   string
+	SourceName string
+	StartedAt  time.Time
 }
 
 // Manager polls the database for pending queue items and dispatches them
@@ -225,16 +226,19 @@ func (m *Manager) ActiveDownloads() []ActiveDownload {
 	return out
 }
 
-// trackStarted records that an item began processing.
 func (m *Manager) trackStarted(item *models.DownloadQueue, provider string) {
 	m.activeMu.Lock()
-	m.activeDownloads = append(m.activeDownloads, ActiveDownload{
+	ad := ActiveDownload{
 		ID:        item.ID,
 		URL:       item.URL,
 		Type:      item.Type,
 		Provider:  provider,
 		StartedAt: time.Now(),
-	})
+	}
+	if item.SourceName != nil {
+		ad.SourceName = *item.SourceName
+	}
+	m.activeDownloads = append(m.activeDownloads, ad)
 	m.activeMu.Unlock()
 }
 

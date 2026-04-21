@@ -47,5 +47,11 @@ func (r *ImgBox) Rip(ctx context.Context, pageURL string) ([]string, error) {
 		return []string{m[1]}, nil
 	}
 
-	return nil, fmt.Errorf("imgbox: no #img found on %s", pageURL)
+	// Fallback (gallery-dl style): Extract from og:image meta tag.
+	ogImageRe := regexp.MustCompile(`(?i)property="og:image"\s+content="([^"]+)"`)
+	if m := ogImageRe.FindStringSubmatch(body); m != nil {
+		return []string{m[1]}, nil
+	}
+
+	return nil, fmt.Errorf("imgbox: no image found on %s", pageURL)
 }
