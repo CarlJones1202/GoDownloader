@@ -26,6 +26,15 @@ func NewImageHandler(db *database.DB, storage config.StorageConfig) *ImageHandle
 	return &ImageHandler{db: db, storage: storage}
 }
 
+func (h *ImageHandler) fileExists(img models.Image) bool {
+	dir := h.storage.ImagesDir
+	if img.IsVideo {
+		dir = h.storage.VideosDir
+	}
+	_, err := os.Stat(filepath.Join(dir, img.Filename))
+	return err == nil
+}
+
 // RegisterRoutes registers all image routes on the given group.
 func (h *ImageHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("", h.list)
@@ -65,11 +74,62 @@ func (h *ImageHandler) list(c *gin.Context) {
 			f.RandomSeed = seed
 		}
 	}
+	if v := c.Query("on_disk"); v != "" {
+		f.OnDisk = v == "true" || v == "1"
+	}
 
-	images, err := h.db.ListImages(c.Request.Context(), f)
-	if err != nil {
-		handleDBError(c, err)
-		return
+	if f.OnDisk {
+		var result []models.Image
+		foundCount := 0
+		skipCount := 0
+		searchOffset := 0
+		batchSize := 100
+		if limit > batchSize {
+			batchSize = limit * 2
+		}
+
+		ctx := c.Request.Context()
+		for foundCount < limit {
+			batch, err := h.db.ListImages(ctx, database.ImageFilter{
+				GalleryID:  f.GalleryID,
+				IsVideo:    f.IsVideo,
+				IsFavorite: f.IsFavorite,
+				SortBy:     f.SortBy,
+				RandomSeed: f.RandomSeed,
+				Limit:      batchSize,
+				Offset:     searchOffset,
+			})
+			if err != nil || len(batch) == 0 {
+				break
+			}
+
+			for _, img := range batch {
+				if h.fileExists(img) {
+					if skipCount < offset {
+						skipCount++
+					} else {
+						result = append(result, img)
+						foundCount++
+						if foundCount == limit {
+							break
+						}
+					}
+				}
+			}
+			searchOffset += batchSize
+			// Safety break to avoid infinite loop if no images exist
+			if searchOffset > 100000 {
+				break
+			}
+		}
+		images = result
+	} else {
+		var err error
+		images, err = h.db.ListImages(c.Request.Context(), f)
+		if err != nil {
+			handleDBError(c, err)
+			return
+		}
 	}
 	totalCount, err := h.db.CountImages(c.Request.Context(), f)
 	if err != nil {

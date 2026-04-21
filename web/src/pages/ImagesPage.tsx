@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { images } from '@/lib/api';
 import { cn, parseColors, thumbnailUrl } from '@/lib/utils';
 import {
@@ -15,27 +16,50 @@ import {
 import { JustifiedGrid } from '@/components/JustifiedGrid';
 import type { JustifiedItem } from '@/components/JustifiedGrid';
 import { Lightbox } from '@/components/Lightbox';
-import { Heart, Download, Search, Palette, Trash2 } from 'lucide-react';
+import { Heart, Download, Search, Palette, Trash2, Shuffle, HardDrive } from 'lucide-react';
+import { Select } from '@/components/UI';
 import { usePagination } from '@/hooks/usePagination';
 
 export function ImagesPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { page, offset, limit, prevPage, nextPage, resetPage } = usePagination({ limit: 50 });
-  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  
+  const sortBy = (searchParams.get('sort') as any) || 'newest';
+  const randomSeed = Number(searchParams.get('seed')) || 0;
+  const onDiskOnly = searchParams.get('on_disk') === 'true';
+  const favoritesOnly = searchParams.get('favorites') === 'true';
+
   const [colorSearch, setColorSearch] = useState('');
   const [activeColorSearch, setActiveColorSearch] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
+  const updateFilter = useCallback((key: string, value: any) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value === null || value === false || value === '' || (key === 'sort' && value === 'newest') || (key === 'seed' && value === 0)) {
+        next.delete(key);
+      } else {
+        next.set(key, String(value));
+      }
+      next.delete('page');
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
   // Regular list query
   const { data: imageList, isLoading } = useQuery({
-    queryKey: ['images', { offset, limit, is_favorite: favoritesOnly || undefined }],
+    queryKey: ['images', { offset, limit, is_favorite: favoritesOnly || undefined, sort_by: sortBy, random_seed: sortBy === 'random' ? randomSeed : undefined, on_disk: onDiskOnly || undefined }],
     queryFn: () =>
       images.list({
         limit,
         offset,
         is_favorite: favoritesOnly || undefined,
         is_video: false,
+        sort_by: sortBy,
+        random_seed: sortBy === 'random' ? randomSeed : undefined,
+        on_disk: onDiskOnly || undefined,
       }),
     enabled: !activeColorSearch,
   });
@@ -167,14 +191,65 @@ export function ImagesPage() {
         <Button
           variant={favoritesOnly ? 'primary' : 'secondary'}
           size="sm"
-          onClick={() => {
-            setFavoritesOnly(!favoritesOnly);
-            resetPage();
-          }}
+          onClick={() => updateFilter('favorites', !favoritesOnly)}
         >
           <Heart size={14} /> Favorites
         </Button>
       </PageHeader>
+
+      {/* Filters and Sorting */}
+      <Card className="mb-4">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="w-48">
+            <Select
+              label="Sort By"
+              value={sortBy}
+              onChange={(e) => updateFilter('sort', e.target.value)}
+              options={[
+                { value: 'newest', label: 'Newest first' },
+                { value: 'oldest', label: 'Oldest first' },
+                { value: 'largest', label: 'Largest first' },
+                { value: 'smallest', label: 'Smallest first' },
+                { value: 'random', label: 'Random' },
+              ]}
+            />
+          </div>
+
+          {sortBy === 'random' && (
+            <>
+              <div className="w-32">
+                <Input
+                  label="Seed"
+                  type="number"
+                  value={randomSeed}
+                  onChange={(e) => updateFilter('seed', e.target.value)}
+                />
+              </div>
+              <Button
+                variant="secondary"
+                size="md"
+                className="mb-0.5 h-10"
+                onClick={() => updateFilter('seed', Math.floor(Math.random() * 1000000))}
+              >
+                <Shuffle size={14} className="mr-1" /> Shuffle
+              </Button>
+            </>
+          )}
+
+          <div className="flex items-center gap-2 h-10 mb-0.5">
+            <input
+              id="onDiskOnly"
+              type="checkbox"
+              checked={onDiskOnly}
+              onChange={(e) => updateFilter('on_disk', e.target.checked)}
+              className="w-4 h-4 rounded border-zinc-700 bg-zinc-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-zinc-900"
+            />
+            <label htmlFor="onDiskOnly" className="text-sm font-medium text-zinc-300 cursor-pointer flex items-center gap-1.5">
+              <HardDrive size={14} /> Only images on disk
+            </label>
+          </div>
+        </div>
+      </Card>
 
       {/* Color search */}
       <Card className="mb-4">

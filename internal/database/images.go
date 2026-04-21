@@ -24,6 +24,7 @@ type ImageFilter struct {
 	Offset     int
 	SortBy     string // "newest" (default), "oldest", "largest", "smallest", "random"
 	RandomSeed int64  // seed for random ordering
+	OnDisk     bool   // only return images that exist on disk (checked by handler)
 }
 
 const (
@@ -64,7 +65,6 @@ func (db *DB) ListImages(ctx context.Context, f ImageFilter) ([]models.Image, er
 	       LEFT JOIN galleries ON images.gallery_id = galleries.id
 	            WHERE 1=1`
 	args := []any{}
-
 	if f.GalleryID != nil {
 		query += " AND gallery_id = ?"
 		args = append(args, *f.GalleryID)
@@ -76,6 +76,10 @@ func (db *DB) ListImages(ctx context.Context, f ImageFilter) ([]models.Image, er
 	if f.IsFavorite != nil {
 		query += " AND is_favorite = ?"
 		args = append(args, *f.IsFavorite)
+	}
+
+	if f.SortBy == SortByRandom {
+		args = append(args, f.RandomSeed)
 	}
 
 	query += " ORDER BY " + sortOrder + " LIMIT ? OFFSET ?"
