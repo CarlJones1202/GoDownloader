@@ -72,6 +72,7 @@ export const galleries = {
   list: (params: GalleryListParams = {}) =>
     request<PaginatedResult<Gallery>>(`/galleries${qs(params)}`),
   get: (id: number) => request<Gallery>(`/galleries/${id}`),
+  people: (id: number) => request<Person[]>(`/galleries/${id}/people`),
   create: (data: Partial<Gallery>) =>
     request<Gallery>('/galleries', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: number, data: Partial<Gallery>) =>

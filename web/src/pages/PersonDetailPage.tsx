@@ -20,16 +20,23 @@ import {
   Sparkles,
   Search,
   Link2,
-  Unlink,
   Plus,
   Save,
-  ExternalLink,
   X,
   Check,
   User,
   Edit,
   ChevronLeft,
   ChevronRight,
+  Info,
+  Layers,
+  Settings2,
+  Calendar,
+  MapPin,
+  Maximize2,
+  Weight,
+  Palette,
+  Fingerprint,
 } from 'lucide-react';
 import { usePagination } from '@/hooks/usePagination';
 import { CoverGrid } from '@/components/CoverGrid';
@@ -44,12 +51,29 @@ function parsePhotos(photos?: string): string[] {
   }
 }
 
-function DetailItem({ label, value }: { label: string; value?: string | null }) {
+function BioCard({ icon: Icon, label, value, color = "blue" }: { icon: any, label: string; value?: string | null, color?: string }) {
   if (!value) return null;
+  
+  const colors: Record<string, string> = {
+    blue: "text-blue-300 bg-blue-500/10 border-blue-500/20",
+    pink: "text-pink-300 bg-pink-500/10 border-pink-500/20",
+    amber: "text-amber-300 bg-amber-500/10 border-amber-500/20",
+    emerald: "text-emerald-300 bg-emerald-500/10 border-emerald-500/20",
+    violet: "text-violet-300 bg-violet-500/10 border-violet-500/20",
+    zinc: "text-zinc-300 bg-zinc-500/10 border-zinc-500/20",
+  };
+
   return (
-    <div className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/5">
-      <span className="text-[11px] uppercase tracking-wide text-zinc-500">{label}</span>
-      <p className="mt-1 text-sm text-zinc-100 leading-snug">{value}</p>
+    <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+      <div className="flex items-center gap-3">
+      <div className={`p-2 rounded-md border ${colors[color] || colors.zinc}`}>
+        <Icon size={18} />
+      </div>
+      <div>
+        <p className="text-[11px] uppercase tracking-wide text-zinc-500 font-medium">{label}</p>
+        <p className="text-sm text-zinc-100">{value}</p>
+      </div>
+      </div>
     </div>
   );
 }
@@ -116,63 +140,76 @@ function IdentifyModal({ personId, personName, open, onClose, onIdentified }: Id
   const results = searchResponse?.results ?? [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/75 px-4 pt-10">
-      <div className="mb-10 w-full max-w-5xl overflow-hidden rounded-[2rem] border border-white/10 bg-[#0b0b10] shadow-2xl shadow-black/40">
-        <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+      <div className="w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden rounded-[2.5rem] border border-white/10 bg-[#0b0b10] shadow-2xl">
+        <div className="flex items-center justify-between border-b border-white/10 px-8 py-6">
           <div>
-            <h2 className="text-lg font-semibold text-white">Identify Person</h2>
-            <p className="text-sm text-zinc-400">Search providers and apply a match</p>
+            <h2 className="text-xl font-bold text-white">Match Metadata</h2>
+            <p className="text-sm text-zinc-400 mt-1">Connect this profile to external data providers</p>
           </div>
-          <button onClick={handleClose} className="rounded-full p-2 text-zinc-400 hover:bg-white/5 hover:text-white">
-            <X size={18} />
+          <button onClick={handleClose} className="rounded-full p-2 text-zinc-400 hover:bg-white/5 hover:text-white transition-colors">
+            <X size={20} />
           </button>
         </div>
 
-        <div className="px-6 py-5">
-          <div className="grid gap-3 md:grid-cols-[180px,1fr,auto] md:items-end">
-            <Select
-              label="Provider"
-              value={provider}
-              onChange={(e) => {
-                setProvider(e.target.value);
-                setSearchTriggered(false);
-              }}
-              options={(providers ?? ['stashdb']).map((p) => ({ value: p, label: p }))}
-            />
-            <Input
-              label="Search query"
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setSearchTriggered(false);
-              }}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="Enter a name or alias"
-            />
-            <Button size="sm" onClick={handleSearch} disabled={!query || searching}>
-              <Search size={14} /> {searching ? 'Searching...' : 'Search'}
-            </Button>
+        <div className="px-8 py-6 bg-white/[0.02]">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="w-full sm:w-48">
+              <Select
+                label="Provider"
+                value={provider}
+                onChange={(e) => {
+                  setProvider(e.target.value);
+                  setSearchTriggered(false);
+                }}
+                options={(providers ?? ['stashdb']).map((p) => ({ value: p, label: p }))}
+              />
+            </div>
+            <div className="flex-1 flex gap-2 items-end">
+              <div className="flex-1">
+                <Input
+                  label="Name to search"
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setSearchTriggered(false);
+                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                  placeholder="Enter a name or alias"
+                />
+              </div>
+              <Button size="sm" onClick={handleSearch} disabled={!query || searching} className="mb-0.5">
+                {searching ? <Spinner size="sm" /> : <Search size={18} />}
+              </Button>
+            </div>
           </div>
         </div>
 
-        <div className="max-h-[58vh] overflow-y-auto px-6 pb-6">
-          {searching && <Spinner />}
+        <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
+          {searching && (
+            <div className="py-20 flex flex-col items-center justify-center gap-4">
+              <Spinner size="lg" />
+              <p className="text-zinc-500 animate-pulse">Searching through {provider}...</p>
+            </div>
+          )}
 
           {searchError && (
-            <p className="text-sm text-red-400">
-              Search failed: {searchError instanceof Error ? searchError.message : 'Unknown error'}
-            </p>
+            <Card variant="danger" className="flex items-center gap-3">
+              <XCircle size={18} />
+              <p className="text-sm">Search failed: {searchError instanceof Error ? searchError.message : 'Unknown error'}</p>
+            </Card>
           )}
 
           {searchTriggered && !searching && results.length === 0 && !searchError && (
-            <EmptyState message={`No results found for "${query}" on ${provider}.`} />
+            <EmptyState 
+               icon={<Search size={48} className="text-zinc-700" />}
+               message={`No matches found for "${query}"`} 
+               description="Try adjusting the name or switching providers."
+            />
           )}
 
           {results.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-xs uppercase tracking-wide text-zinc-500">
-                {results.length} result{results.length !== 1 ? 's' : ''}
-              </p>
+            <div className="grid gap-4">
               {results.map((result, idx) => (
                 <SearchResultCard
                   key={result.external_id ?? idx}
@@ -186,16 +223,15 @@ function IdentifyModal({ personId, personName, open, onClose, onIdentified }: Id
         </div>
 
         {selectedResult && (
-          <div className="flex items-center justify-between border-t border-white/10 px-6 py-4">
-            <div className="text-sm text-zinc-300">
-              Selected <span className="font-medium text-white">{selectedResult.name}</span>
+          <div className="flex items-center justify-between border-t border-white/10 px-8 py-6 bg-blue-500/5">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-blue-400 mb-1">Target Match</p>
+              <h3 className="font-bold text-white text-lg">{selectedResult.name}</h3>
             </div>
-            <div className="flex gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setSelectedResult(null)}>
-                Deselect
-              </Button>
-              <Button size="sm" onClick={() => identifyMut.mutate(selectedResult)} disabled={!selectedResult.external_id || identifyMut.isPending}>
-                <Check size={14} /> {identifyMut.isPending ? 'Applying...' : 'Apply & Link'}
+            <div className="flex gap-3">
+              <Button variant="secondary" onClick={() => setSelectedResult(null)}>Cancel</Button>
+              <Button onClick={() => identifyMut.mutate(selectedResult)} disabled={!selectedResult.external_id || identifyMut.isPending}>
+                {identifyMut.isPending ? <Spinner size="sm" /> : <><Check size={18} className="mr-2" /> Link Profile</>}
               </Button>
             </div>
           </div>
@@ -205,122 +241,39 @@ function IdentifyModal({ personId, personName, open, onClose, onIdentified }: Id
   );
 }
 
-interface SearchResultCardProps {
-  result: PersonInfo;
-  selected: boolean;
-  onSelect: () => void;
-}
-
-function SearchResultCard({ result, selected, onSelect }: SearchResultCardProps) {
-  const details: string[] = [];
-  if (result.nationality) details.push(result.nationality);
-  if (result.birth_date) details.push(`Born ${result.birth_date}`);
-  if (result.ethnicity) details.push(result.ethnicity);
-  if (result.height) details.push(result.height);
-  if (result.weight) details.push(result.weight);
-  if (result.measurements) details.push(result.measurements);
-  if (result.hair_color) details.push(`Hair ${result.hair_color}`);
-  if (result.eye_color) details.push(`Eyes ${result.eye_color}`);
-  if (result.tattoos) details.push(`Tattoos ${result.tattoos}`);
-  if (result.piercings) details.push(`Piercings ${result.piercings}`);
-
+function SearchResultCard({ result, selected, onSelect }: any) {
   const thumbnailUrl = result.image_urls?.[0] ?? result.image_url;
-
+  
   return (
     <button
       onClick={onSelect}
-      className={`group flex w-full gap-4 rounded-[1.5rem] border p-3 text-left transition-all ${
-        selected ? 'border-blue-500/70 bg-blue-500/10' : 'border-white/8 bg-white/5 hover:border-white/15 hover:bg-white/7'
+      className={`group flex items-center gap-6 rounded-3xl border p-4 text-left transition-all duration-300 ${
+        selected 
+          ? 'border-blue-500/50 bg-blue-500/10 shadow-lg shadow-blue-500/5 scale-[1.02]' 
+          : 'border-white/5 bg-white/[0.03] hover:border-white/10 hover:bg-white/[0.05]'
       }`}
     >
-      <div className="h-28 w-20 flex-shrink-0 overflow-hidden rounded-[1rem] bg-zinc-800 ring-1 ring-white/5">
+      <div className="h-24 w-24 flex-shrink-0 overflow-hidden rounded-2xl bg-zinc-800 ring-1 ring-white/10 shadow-md">
         {thumbnailUrl ? (
-          <img src={thumbnailUrl} alt={result.name} className="h-full w-full object-cover" />
+          <img src={thumbnailUrl} alt={result.name} className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500" />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900">
-            <User size={24} className="text-zinc-600" />
+          <div className="flex h-full w-full items-center justify-center bg-zinc-900">
+            <User size={32} className="text-zinc-700" />
           </div>
         )}
       </div>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="truncate text-base font-semibold text-white">{result.name || 'Unknown'}</span>
-              {selected && <Badge variant="info">Selected</Badge>}
-            </div>
-            {result.aliases && result.aliases.length > 0 && (
-              <p className="mt-1 text-sm text-zinc-400">aka {result.aliases.slice(0, 3).join(', ')}</p>
-            )}
-          </div>
-          {result.external_id && <span className="font-mono text-[11px] text-zinc-600">{result.external_id}</span>}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <h4 className="text-lg font-bold text-white truncate">{result.name}</h4>
+          {selected && <Check size={16} className="text-blue-400" />}
         </div>
-
-        {details.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {details.slice(0, 6).map((d) => (
-              <span key={d} className="rounded-full bg-white/5 px-2.5 py-1 text-xs text-zinc-300 ring-1 ring-white/5">
-                {d}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {result.biography && <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-zinc-500">{result.biography}</p>}
+        {result.nationality && <p className="text-sm text-zinc-400">{result.nationality} · {result.ethnicity}</p>}
+        {result.birth_date && <p className="text-xs text-zinc-500 mt-1">Born {result.birth_date}</p>}
+        <p className="text-xs font-mono text-zinc-600 mt-2">{result.external_id}</p>
       </div>
     </button>
   );
-}
-
-interface EditForm {
-  name: string;
-  aliases: string;
-  nationality: string;
-  birth_date: string;
-  ethnicity: string;
-  hair_color: string;
-  eye_color: string;
-  height: string;
-  weight: string;
-  measurements: string;
-  tattoos: string;
-  piercings: string;
-  biography: string;
-}
-
-const emptyForm: EditForm = {
-  name: '',
-  aliases: '',
-  nationality: '',
-  birth_date: '',
-  ethnicity: '',
-  hair_color: '',
-  eye_color: '',
-  height: '',
-  weight: '',
-  measurements: '',
-  tattoos: '',
-  piercings: '',
-  biography: '',
-};
-
-function personToForm(p: Person): EditForm {
-  return {
-    name: p.name,
-    aliases: p.aliases ?? '',
-    nationality: p.nationality ?? '',
-    birth_date: p.birth_date ?? '',
-    ethnicity: p.ethnicity ?? '',
-    hair_color: p.hair_color ?? '',
-    eye_color: p.eye_color ?? '',
-    height: p.height ?? '',
-    weight: p.weight ?? '',
-    measurements: p.measurements ?? '',
-    tattoos: p.tattoos ?? '',
-    piercings: p.piercings ?? '',
-    biography: p.biography ?? '',
-  };
 }
 
 export function PersonDetailPage() {
@@ -329,11 +282,11 @@ export function PersonDetailPage() {
   const queryClient = useQueryClient();
 
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState<EditForm>(emptyForm);
+  const [showTools, setShowTools] = useState(false);
+  const [editForm, setEditForm] = useState<any>({});
   const [photoIndex, setPhotoIndex] = useState(0);
-  const { page: galleryPage, offset: galleryOffset, limit: galleryLimit, prevPage: galleryPrev, nextPage: galleryNext } = usePagination({ limit: 20, paramName: 'gpage' });
+  const { page: galleryPage, offset: galleryOffset, limit: galleryLimit, prevPage: galleryPrev, nextPage: galleryNext } = usePagination({ limit: 12, paramName: 'gpage' });
   const [linkGalleryId, setLinkGalleryId] = useState('');
-  const [newIdentifier, setNewIdentifier] = useState({ provider: '', external_id: '' });
   const [identifyOpen, setIdentifyOpen] = useState(false);
 
   const { data: person, isLoading: loadingPerson } = useQuery({
@@ -346,28 +299,13 @@ export function PersonDetailPage() {
     queryFn: () => people.galleries(personId, { limit: galleryLimit, offset: galleryOffset }),
   });
 
-  const { data: identifiers, isLoading: loadingIds } = useQuery({
+  const { data: identifiers } = useQuery({
     queryKey: ['person-identifiers', personId],
     queryFn: () => people.identifiers(personId),
   });
 
   const updateMut = useMutation({
-    mutationFn: () => {
-      const data: Partial<Person> = { name: editForm.name };
-      if (editForm.aliases) data.aliases = editForm.aliases;
-      if (editForm.nationality) data.nationality = editForm.nationality;
-      if (editForm.birth_date) data.birth_date = editForm.birth_date;
-      if (editForm.ethnicity) data.ethnicity = editForm.ethnicity;
-      if (editForm.hair_color) data.hair_color = editForm.hair_color;
-      if (editForm.eye_color) data.eye_color = editForm.eye_color;
-      if (editForm.height) data.height = editForm.height;
-      if (editForm.weight) data.weight = editForm.weight;
-      if (editForm.measurements) data.measurements = editForm.measurements;
-      if (editForm.tattoos) data.tattoos = editForm.tattoos;
-      if (editForm.piercings) data.piercings = editForm.piercings;
-      if (editForm.biography) data.biography = editForm.biography;
-      return people.update(personId, data);
-    },
+    mutationFn: () => people.update(personId, editForm),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['person', personId] });
       setEditing(false);
@@ -390,192 +328,238 @@ export function PersonDetailPage() {
     },
   });
 
-  const unlinkMut = useMutation({
-    mutationFn: (galleryId: number) => people.unlinkGallery(personId, galleryId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['person-galleries', personId] });
-    },
-  });
-
-  const upsertIdMut = useMutation({
-    mutationFn: () => people.upsertIdentifier(personId, newIdentifier),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['person-identifiers', personId] });
-      setNewIdentifier({ provider: '', external_id: '' });
-    },
-  });
-
   const startEditing = () => {
     if (!person) return;
-    setEditForm(personToForm(person));
+    setEditForm({
+      name: person.name,
+      aliases: person.aliases ?? '',
+      nationality: person.nationality ?? '',
+      birth_date: person.birth_date ?? '',
+      ethnicity: person.ethnicity ?? '',
+      hair_color: person.hair_color ?? '',
+      eye_color: person.eye_color ?? '',
+      height: person.height ?? '',
+      weight: person.weight ?? '',
+      measurements: person.measurements ?? '',
+      tattoos: person.tattoos ?? '',
+      piercings: person.piercings ?? '',
+      biography: person.biography ?? '',
+    });
     setEditing(true);
   };
 
-  const setField = (field: keyof EditForm, value: string) => setEditForm((prev) => ({ ...prev, [field]: value }));
-
-  if (loadingPerson) return <Spinner />;
-  if (!person) return <EmptyState message="Person not found." />;
+  if (loadingPerson) return <div className="py-40 flex justify-center"><Spinner size="lg" /></div>;
+  if (!person) return <EmptyState message="Profile not found" />;
 
   const photos = parsePhotos(person.photos);
   const coverPhoto = photos[photoIndex] ?? photos[0];
+  const statChips = [
+    { label: 'Galleries', value: String(person.gallery_count ?? 0) },
+    { label: 'Photos', value: String(photos.length) },
+    { label: 'Linked IDs', value: String(identifiers?.length ?? 0) },
+  ];
 
   return (
-    <>
-      <div className="mb-4">
-        <Link to="/people" className="text-sm text-zinc-400 hover:text-zinc-200 inline-flex items-center gap-1">
-          <ArrowLeft size={14} /> Back to people
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-16">
+      <div className="py-4">
+        <Link to="/people" className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors">
+          <ArrowLeft size={16} />
+          Back to People
         </Link>
       </div>
-
-      <div className="flex flex-col md:flex-row gap-6 items-start">
-  <div className="relative w-full md:w-[320px] max-w-xs aspect-[4/5] overflow-hidden rounded-xl shadow-sm">
-    {coverPhoto ? (
-      <img src={coverPhoto} alt={person.name} className="w-full h-full object-cover" />
-    ) : (
-      <div className="flex w-full h-full items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-950">
-        <User size={72} className="text-zinc-600" />
-      </div>
-    )}
-    {photos.length > 1 && (
-      <div className="absolute bottom-2 right-2 flex items-center gap-1 bg-zinc-900/60 rounded-md px-2 py-1 text-xs text-zinc-300">
-        <button onClick={() => setPhotoIndex((i) => (i - 1 + photos.length) % photos.length)} className="rounded-full p-1 hover:bg-white/10"><ChevronLeft size={14} /></button>
-        <span>{photoIndex + 1} / {photos.length}</span>
-        <button onClick={() => setPhotoIndex((i) => (i + 1) % photos.length)} className="rounded-full p-1 hover:bg-white/10"><ChevronRight size={14} /></button>
-      </div>
-    )}
-  </div>
-
-  <div className="flex-1 min-w-0">
-    <div className="flex items-start justify-between gap-2 mb-2">
-      <h1 className="text-3xl font-bold text-white leading-tight line-clamp-2">{person.name}</h1>
-      <div className="flex gap-1">
-        <Button size="sm" variant="ghost" title="Edit" onClick={() => editing ? setEditing(false) : startEditing()}><Edit size={18} /></Button>
-        <Button size="sm" variant="ghost" title="Identify" onClick={() => setIdentifyOpen(true)}><Search size={18} /></Button>
-        <Button size="sm" variant="ghost" title="Enrich" onClick={() => enrichMut.mutate()} disabled={enrichMut.isPending}><Sparkles size={18} /></Button>
-      </div>
-    </div>
-    <div className="flex flex-wrap gap-1.5 mb-1">
-      {person.aliases && <span className="text-xs text-zinc-400 truncate max-w-xs">{Array.isArray(person.aliases) ? person.aliases.slice(0,3).join(", ") : person.aliases}</span>}
-      {person.nationality && <Badge className="text-xs px-2 py-0.5">{person.nationality}</Badge>}
-      {person.ethnicity && <Badge className="text-xs px-2 py-0.5" variant="info">{person.ethnicity}</Badge>}
-      {typeof person.gallery_count === "number" && <Badge className="text-xs px-2 py-0.5" variant="default">{person.gallery_count === 1 ? "1 gallery" : `${person.gallery_count} galleries`}</Badge>}
-    </div>
-    <div className="flex flex-wrap gap-1 mb-2">
-      {person.height && <Badge className="text-xs px-2 py-0.5">{person.height}</Badge>}
-      {person.measurements && <Badge className="text-xs px-2 py-0.5" variant="warning">{person.measurements}</Badge>}
-    </div>
-    {person.biography && <p className="text-sm text-zinc-300 mt-2 mb-2 max-w-2xl line-clamp-4 whitespace-pre-line">{person.biography}</p>}
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 text-sm mt-3">
-      {person.birth_date && <div><span className="text-zinc-500">Birth date:</span> <span className="ml-1 text-zinc-100">{person.birth_date}</span></div>}
-      {person.hair_color && <div><span className="text-zinc-500">Hair:</span> <span className="ml-1 text-zinc-100">{person.hair_color}</span></div>}
-      {person.eye_color && <div><span className="text-zinc-500">Eyes:</span> <span className="ml-1 text-zinc-100">{person.eye_color}</span></div>}
-      {person.weight && <div><span className="text-zinc-500">Weight:</span> <span className="ml-1 text-zinc-100">{person.weight}</span></div>}
-      {person.tattoos && <div><span className="text-zinc-500">Tattoos:</span> <span className="ml-1 text-zinc-100">{person.tattoos}</span></div>}
-      {person.piercings && <div><span className="text-zinc-500">Piercings:</span> <span className="ml-1 text-zinc-100">{person.piercings}</span></div>}
-      <div><span className="text-zinc-500">Added:</span> <span className="ml-1 text-zinc-100">{formatDate(person.created_at)}</span></div>
-    </div>
-  </div>
-</div>
-
-{/* Identifiers and Edit form sections remain below */}
-
-
-
-          {editing && (
-            <Card className="rounded-2xl border-white/5 bg-white/2 shadow-none">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                <Input label="Name" value={editForm.name} onChange={(e) => setField('name', e.target.value)} />
-                <Input label="Aliases" placeholder="Comma-separated" value={editForm.aliases} onChange={(e) => setField('aliases', e.target.value)} />
-                <Input label="Birth Date" placeholder="YYYY-MM-DD" value={editForm.birth_date} onChange={(e) => setField('birth_date', e.target.value)} />
-                <Input label="Nationality" value={editForm.nationality} onChange={(e) => setField('nationality', e.target.value)} />
-                <Input label="Ethnicity" value={editForm.ethnicity} onChange={(e) => setField('ethnicity', e.target.value)} />
-                <Input label="Hair Color" value={editForm.hair_color} onChange={(e) => setField('hair_color', e.target.value)} />
-                <Input label="Eye Color" value={editForm.eye_color} onChange={(e) => setField('eye_color', e.target.value)} />
-                <Input label="Height" placeholder={'e.g. 5\'6" (168cm)'} value={editForm.height} onChange={(e) => setField('height', e.target.value)} />
-                <Input label="Weight" placeholder="e.g. 115 lbs (52kg)" value={editForm.weight} onChange={(e) => setField('weight', e.target.value)} />
-                <Input label="Measurements" placeholder="e.g. 34C-24-35" value={editForm.measurements} onChange={(e) => setField('measurements', e.target.value)} />
-                <Input label="Tattoos" value={editForm.tattoos} onChange={(e) => setField('tattoos', e.target.value)} />
-                <Input label="Piercings" value={editForm.piercings} onChange={(e) => setField('piercings', e.target.value)} />
+          <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-3 md:p-4 mb-4">
+            <div className="grid items-start grid-cols-[180px_minmax(0,1fr)] md:grid-cols-[220px_minmax(0,1fr)] gap-4">
+              <div className="rounded-lg border border-zinc-700 bg-zinc-800 p-2">
+                <div className="relative aspect-[3/4] overflow-hidden rounded-md bg-zinc-800">
+                  {coverPhoto ? (
+                    <img src={coverPhoto} alt={person.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center">
+                      <User size={44} className="text-zinc-600" />
+                    </div>
+                  )}
+                </div>
+                {photos.length > 1 && (
+                  <div className="mt-2 flex items-center justify-between">
+                    <button
+                      onClick={() => setPhotoIndex((i) => (i - 1 + photos.length) % photos.length)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-600 text-zinc-300 hover:text-white"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                    <span className="text-xs text-zinc-400">{photoIndex + 1}/{photos.length}</span>
+                    <button
+                      onClick={() => setPhotoIndex((i) => (i + 1) % photos.length)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded border border-zinc-600 text-zinc-300 hover:text-white"
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                )}
               </div>
-              <div className="mt-3">
-                <Textarea label="Biography" rows={5} value={editForm.biography} onChange={(e) => setField('biography', e.target.value)} />
-              </div>
-              <div className="mt-4 flex justify-end">
-                <Button size="sm" onClick={() => updateMut.mutate()} disabled={!editForm.name || updateMut.isPending}>
-                  <Save size={14} /> Save changes
-                </Button>
-              </div>
-            </Card>
-          )}
 
-          <section>
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Identifiers</h2>
-              <span className="text-sm text-zinc-500">External matches and references</span>
+              <div className="rounded-lg border border-zinc-700 bg-zinc-950/50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h1 className="text-2xl md:text-3xl font-semibold text-white">{person.name}</h1>
+                    {person.aliases && (
+                      <p className="text-sm text-zinc-400 mt-1">
+                        {typeof person.aliases === 'string' ? person.aliases.split(',').map((a) => a.trim()).join(' • ') : person.aliases}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="secondary" size="sm" onClick={() => setShowTools((v) => !v)}>
+                      <Settings2 size={14} /> {showTools ? 'Hide Tools' : 'Tools'}
+                    </Button>
+                    <Button size="sm" onClick={startEditing}>
+                      <Edit size={14} /> Edit
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {statChips.map((chip) => (
+                    <div key={chip.label} className="rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2">
+                      <p className="text-[11px] uppercase tracking-wide text-zinc-500">{chip.label}</p>
+                      <p className="text-base text-zinc-100">{chip.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {person.nationality && <Badge variant="info">{person.nationality}</Badge>}
+                  {person.ethnicity && <Badge>{person.ethnicity}</Badge>}
+                  {identifiers?.map((id: any) => (
+                    <Badge key={id.id} variant="success">{id.provider}</Badge>
+                  ))}
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <BioCard icon={Calendar} label="Birth Date" value={person.birth_date} color="blue" />
+                    <BioCard icon={Maximize2} label="Height" value={person.height} color="amber" />
+                    <BioCard icon={Weight} label="Weight" value={person.weight} color="emerald" />
+                    <BioCard icon={Check} label="Measurements" value={person.measurements} color="blue" />
+                  </div>
+                  <div className="space-y-2">
+                    <BioCard icon={MapPin} label="Nationality" value={person.nationality} color="pink" />
+                    <BioCard icon={Fingerprint} label="Ethnicity" value={person.ethnicity} color="violet" />
+                    <BioCard icon={Palette} label="Hair Color" value={person.hair_color} color="amber" />
+                    <BioCard icon={Palette} label="Eye Color" value={person.eye_color} color="violet" />
+                  </div>
+                </div>
+
+                {person.biography && (
+                  <div className="mt-4 rounded-md border border-zinc-800 bg-zinc-900 p-3">
+                    <p className="text-xs uppercase tracking-wide text-zinc-500 mb-1">Biography</p>
+                    <p className="text-sm text-zinc-300 whitespace-pre-line">{person.biography}</p>
+                  </div>
+                )}
+
+                {showTools && (
+                  <div className="mt-4 rounded-md border border-zinc-800 bg-zinc-900 p-3">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <Button variant="secondary" size="sm" onClick={() => setIdentifyOpen(true)}>
+                        <Search size={14} /> Match Externally
+                      </Button>
+                      <Button variant="secondary" size="sm" onClick={() => enrichMut.mutate()} disabled={enrichMut.isPending}>
+                        <Sparkles size={14} /> {enrichMut.isPending ? 'Syncing...' : 'Sync Full Data'}
+                      </Button>
+                      <div className="flex gap-2">
+                        <Input placeholder="Gallery ID" value={linkGalleryId} onChange={(e) => setLinkGalleryId(e.target.value)} />
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            const gid = parseInt(linkGalleryId, 10);
+                            if (gid) linkMut.mutate(gid);
+                          }}
+                          disabled={!linkGalleryId || linkMut.isPending}
+                        >
+                          <Link2 size={14} />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-<div className="py-4">
-               {loadingIds ? (
-                <Spinner />
-              ) : !identifiers || identifiers.length === 0 ? (
-                <EmptyState message="No external identifiers linked." />
-              ) : (
-<div className="flex flex-row flex-wrap gap-2 px-1 py-2">
-  {identifiers.map((ident) => (
-    <span key={ident.id} className="flex items-center gap-2 rounded-xl bg-zinc-800 px-3 py-1 text-xs font-medium text-zinc-100 shadow-sm">
-      <Badge className="text-[10px] px-2 py-0.5 bg-zinc-700 mr-1" variant="info">{ident.provider}</Badge>
-      <span className="font-mono tracking-normal text-xs text-zinc-200">{ident.external_id}</span>
-    </span>
-  ))}
-</div>
-              )}
+          </section>
 
-              <div className="mt-4 grid gap-2 sm:grid-cols-[160px,1fr,auto] sm:items-end">
-                <Input label="Provider" placeholder="e.g. stashdb" value={newIdentifier.provider} onChange={(e) => setNewIdentifier({ ...newIdentifier, provider: e.target.value })} />
-                <Input label="External ID" placeholder="e.g. abc-123" value={newIdentifier.external_id} onChange={(e) => setNewIdentifier({ ...newIdentifier, external_id: e.target.value })} />
-                <Button size="sm" onClick={() => upsertIdMut.mutate()} disabled={!newIdentifier.provider || !newIdentifier.external_id || upsertIdMut.isPending}>
-                  <Plus size={14} /> Add
-                </Button>
-              </div>
-             </div>
-           </section>
-
-          <section>
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Linked galleries</h2>
-              <span className="text-sm text-zinc-500">Collections associated with this profile</span>
-            </div>
-
-            <div className="mb-4 flex items-end gap-2">
-              <Input placeholder="Gallery ID to link" value={linkGalleryId} onChange={(e) => setLinkGalleryId(e.target.value)} className="w-44" />
-              <Button size="sm" onClick={() => {
-                const gid = parseInt(linkGalleryId);
-                if (gid) linkMut.mutate(gid);
-              }} disabled={!linkGalleryId || linkMut.isPending}>
-                <Link2 size={14} /> Link
-              </Button>
+          <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 md:p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Layers size={16} />
+                Galleries
+              </h2>
+              <Badge>{person.gallery_count ?? 0} total</Badge>
             </div>
 
             {loadingGalleries ? (
               <Spinner />
             ) : !galleryList || galleryList.length === 0 ? (
-              <EmptyState message="No galleries linked to this person." />
+              <EmptyState message="No galleries linked yet." />
             ) : (
-              <CoverGrid
-  items={galleryList.map((g) => ({
-    id: g.id,
-    title: g.title ?? null,
-    thumbnailPath: g.local_thumbnail_path ? g.local_thumbnail_path.split('/').pop() : undefined,
-    provider: g.provider ?? null,
-    createdAt: g.created_at
-  }))}
-/>
+              <>
+                <CoverGrid
+                  items={galleryList.map((g) => ({
+                    id: g.id,
+                    title: g.title ?? null,
+                    thumbnailPath: g.local_thumbnail_path ? g.local_thumbnail_path.split('/').pop() : undefined,
+                    provider: g.provider ?? null,
+                    createdAt: g.created_at,
+                  }))}
+                />
+                <div className="mt-4">
+                  <Pagination
+                    page={galleryPage}
+                    hasMore={galleryList.length === galleryLimit}
+                    onPrev={galleryPrev}
+                    onNext={galleryNext}
+                  />
+                </div>
+              </>
             )}
+          </section>
+      {/* Edit Modal (Glassy) */}
+      {editing && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-xl p-4">
+          <div className="w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden rounded-[3rem] border border-white/10 bg-[#0b0b10] shadow-2xl">
+            <div className="flex items-center justify-between px-10 py-8">
+              <h2 className="text-3xl font-black text-white tracking-tight">Edit Profile</h2>
+              <button onClick={() => setEditing(false)} className="p-2 rounded-full hover:bg-white/5 text-zinc-400 transition-colors">
+                <X size={28} />
+              </button>
+            </div>
 
-            {galleryList && galleryList.length > 0 && (
-              <Pagination page={galleryPage} hasMore={galleryList.length === galleryLimit} onPrev={galleryPrev} onNext={galleryNext} />
-            )}
-           </section>
-        
+            <div className="flex-1 overflow-y-auto px-10 pb-10 space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <Input label="Name" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} />
+                <Input label="Aliases" placeholder="Comma-separated" value={editForm.aliases} onChange={e => setEditForm({...editForm, aliases: e.target.value})} />
+                <Input label="Birth Date" placeholder="YYYY-MM-DD" value={editForm.birth_date} onChange={e => setEditForm({...editForm, birth_date: e.target.value})} />
+                <Input label="Nationality" value={editForm.nationality} onChange={e => setEditForm({...editForm, nationality: e.target.value})} />
+                <Input label="Ethnicity" value={editForm.ethnicity} onChange={e => setEditForm({...editForm, ethnicity: e.target.value})} />
+                <Input label="Hair Color" value={editForm.hair_color} onChange={e => setEditForm({...editForm, hair_color: e.target.value})} />
+                <Input label="Eye Color" value={editForm.eye_color} onChange={e => setEditForm({...editForm, eye_color: e.target.value})} />
+                <Input label="Height" value={editForm.height} onChange={e => setEditForm({...editForm, height: e.target.value})} />
+                <Input label="Weight" value={editForm.weight} onChange={e => setEditForm({...editForm, weight: e.target.value})} />
+                <Input label="Measurements" value={editForm.measurements} onChange={e => setEditForm({...editForm, measurements: e.target.value})} />
+                <Input label="Tattoos" value={editForm.tattoos} onChange={e => setEditForm({...editForm, tattoos: e.target.value})} />
+                <Input label="Piercings" value={editForm.piercings} onChange={e => setEditForm({...editForm, piercings: e.target.value})} />
+              </div>
+              <Textarea label="Biography" rows={6} value={editForm.biography} onChange={e => setEditForm({...editForm, biography: e.target.value})} />
+            </div>
+
+            <div className="px-10 py-8 border-t border-white/5 flex justify-end gap-3 bg-white/[0.01]">
+              <Button variant="secondary" onClick={() => setEditing(false)}>Discard</Button>
+              <Button onClick={() => updateMut.mutate()} disabled={updateMut.isPending}>
+                <Save size={18} className="mr-2" /> Save Profile
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <IdentifyModal
         personId={personId}
         personName={person.name}
@@ -586,6 +570,6 @@ export function PersonDetailPage() {
           queryClient.invalidateQueries({ queryKey: ['person-identifiers', personId] });
         }}
       />
-    </>
+    </div>
   );
 }

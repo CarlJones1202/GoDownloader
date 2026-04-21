@@ -321,15 +321,18 @@ func (h *AdminHandler) galleryCleanup(c *gin.Context) {
 // autolinkGalleries triggers a global scan to link galleries to people based on
 // name matches in titles and source URLs.
 func (h *AdminHandler) autolinkGalleries(c *gin.Context) {
-	linked, err := h.linker.ScanAllGalleries(context.Background())
-	if err != nil {
-		respondError(c, http.StatusInternalServerError, "autolink failed: "+err.Error())
-		return
-	}
+	// Run in background to avoid HTTP timeout for large databases
+	go func() {
+		linked, err := h.linker.ScanAllGalleries(context.Background())
+		if err != nil {
+			slog.Error("autolink: background scan failed", "error", err)
+		} else {
+			slog.Info("autolink: background scan complete", "linked_count", linked)
+		}
+	}()
 
 	respondOK(c, gin.H{
-		"message": "autolink scan complete",
-		"linked":  linked,
+		"message": "autolink scan started in background",
 	})
 }
 

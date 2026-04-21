@@ -137,7 +137,7 @@ export function AdminPage() {
   const autolinkMut = useMutation({
     mutationFn: admin.autolinkGalleries,
     onSuccess: (data) => {
-      alert(`Autolink scan complete: ${data.linked} new links created.`);
+      alert(data.message || 'Autolink scan started in background. Check server logs for progress.');
     },
   });
 

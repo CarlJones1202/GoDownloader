@@ -32,6 +32,16 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+function parsePhotos(photos?: string): string[] {
+  if (!photos) return [];
+  try {
+    const parsed = JSON.parse(photos);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export function GalleryDetailPage() {
   const { id } = useParams<{ id: string }>();
   const galleryId = Number(id);
@@ -67,6 +77,10 @@ export function GalleryDetailPage() {
   const { data: imageList, isLoading: loadingImages } = useQuery({
     queryKey: ['images', { gallery_id: galleryId, sort_by: sortBy }],
     queryFn: () => imagesApi.list({ gallery_id: galleryId, limit: 200, sort_by: sortBy }),
+  });
+  const { data: linkedPeople } = useQuery({
+    queryKey: ['gallery-people', galleryId],
+    queryFn: () => galleries.people(galleryId),
   });
 
   const favMut = useMutation({
@@ -254,132 +268,180 @@ export function GalleryDetailPage() {
         </Link>
       </div>
 
-      <PageHeader
-        title={
-          isEditingTitle ? (
-            <div className="flex items-center gap-2">
-              <Input
-                value={editedTitle}
-                onChange={(e) => setEditedTitle(e.target.value)}
-                className="w-64 h-8"
-                autoFocus
-                onKeyDown={(e) => e.key === 'Enter' && saveTitle()}
-              />
-              <Button size="sm" onClick={saveTitle} disabled={updateTitleMut.isPending}>
-                <Save size={14} />
-              </Button>
-              <Button size="sm" variant="ghost" onClick={cancelEditTitle}>
-                <X size={14} />
-              </Button>
-            </div>
-          ) : (
-            <span>{gallery.title || `Gallery #${gallery.id}`}</span>
-          )
-        }
-      >
-        {!isEditingTitle && (
-          <Button variant="secondary" size="sm" onClick={startEditTitle}>
-            <Edit2 size={14} /> Edit
-          </Button>
-        )}
-        <Button variant="secondary" size="sm" onClick={openMetadataSearch}>
-          <Search size={14} /> Metadata
-        </Button>
-        {gallery.provider && <Badge>{gallery.provider}</Badge>}
-        <Button
-          variant="danger"
-          size="sm"
-          onClick={() => setConfirmDeleteGallery(true)}
-        >
-          <Trash2 size={14} /> Delete Gallery
-        </Button>
-      </PageHeader>
-
-      {/* Gallery info + metadata panel */}
-      <div className="text-xs text-zinc-500 mb-6 space-y-2">
-        <div className="space-y-1">
-          {gallery.url && (
-            <p>
-              URL:{' '}
-              <a href={gallery.url} target="_blank" className="text-blue-400 hover:underline">
-                {gallery.url}
-              </a>
-            </p>
-          )}
-          <p>Created: {formatDate(gallery.created_at)}</p>
-          {imageList && <p>{imageList.total_items} images</p>}
-        </div>
-
-        {/* Metadata display */}
-        {hasMetadata && (
-          <div className="border border-zinc-700 rounded-lg p-4 bg-zinc-800/50 space-y-3">
-            <div className="flex items-center gap-2 text-zinc-300 text-sm font-medium">
-              <FileText size={14} />
-              Gallery Metadata
-            </div>
-
-            {gallery.description && (
-              <p className="text-zinc-300 text-sm leading-relaxed">{gallery.description}</p>
+      <section className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 md:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            {isEditingTitle ? (
+              <div className="flex items-center gap-2">
+                <Input
+                  value={editedTitle}
+                  onChange={(e) => setEditedTitle(e.target.value)}
+                  className="w-64 h-8"
+                  autoFocus
+                  onKeyDown={(e) => e.key === 'Enter' && saveTitle()}
+                />
+                <Button size="sm" onClick={saveTitle} disabled={updateTitleMut.isPending}>
+                  <Save size={14} />
+                </Button>
+                <Button size="sm" variant="ghost" onClick={cancelEditTitle}>
+                  <X size={14} />
+                </Button>
+              </div>
+            ) : (
+              <h1 className="text-2xl md:text-3xl font-semibold text-white truncate">
+                {gallery.title || `Gallery #${gallery.id}`}
+              </h1>
             )}
-
-            <div className="flex flex-wrap items-center gap-4 text-zinc-400">
-              {gallery.rating != null && gallery.rating > 0 && (
-                <span className="inline-flex items-center gap-1">
-                  <Star size={12} className="text-amber-400" />
-                  {gallery.rating.toFixed(1)}
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <span className="rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-400">
+                Created {formatDate(gallery.created_at)}
+              </span>
+              {imageList && (
+                <span className="rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-400">
+                  {imageList.total_items} images
                 </span>
               )}
-
-              {gallery.release_date && (
-                <span className="inline-flex items-center gap-1">
-                  <Calendar size={12} />
-                  {gallery.release_date}
-                </span>
-              )}
-
-              {gallery.source_url && (
-                <a
-                  href={gallery.source_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-blue-400 hover:underline"
-                >
-                  <ExternalLink size={12} />
-                  Source
-                </a>
-              )}
+              {gallery.provider && <Badge>{gallery.provider}</Badge>}
             </div>
           </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {!isEditingTitle && (
+              <Button variant="secondary" size="sm" onClick={startEditTitle}>
+                <Edit2 size={14} /> Edit
+              </Button>
+            )}
+            <Button variant="secondary" size="sm" onClick={openMetadataSearch}>
+              <Search size={14} /> Metadata
+            </Button>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="largest">Largest first</option>
+              <option value="smallest">Smallest first</option>
+            </select>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => setConfirmDeleteGallery(true)}
+            >
+              <Trash2 size={14} /> Delete
+            </Button>
+          </div>
+        </div>
+
+        {(gallery.url || hasMetadata) && (
+          <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr,1fr]">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+              <p className="text-xs uppercase tracking-wide text-zinc-500 mb-1">Gallery URL</p>
+              {gallery.url ? (
+                <a
+                  href={gallery.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-400 hover:underline break-all"
+                >
+                  {gallery.url}
+                </a>
+              ) : (
+                <p className="text-sm text-zinc-500">No source URL saved.</p>
+              )}
+            </div>
+
+            {hasMetadata ? (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 space-y-2">
+                <div className="flex items-center gap-2 text-zinc-300 text-sm font-medium">
+                  <FileText size={14} />
+                  Metadata
+                </div>
+                {gallery.description && (
+                  <p className="text-sm text-zinc-400 line-clamp-3">{gallery.description}</p>
+                )}
+                <div className="flex flex-wrap items-center gap-3 text-zinc-400 text-xs">
+                  {gallery.rating != null && gallery.rating > 0 && (
+                    <span className="inline-flex items-center gap-1">
+                      <Star size={12} className="text-amber-400" />
+                      {gallery.rating.toFixed(1)}
+                    </span>
+                  )}
+                  {gallery.release_date && (
+                    <span className="inline-flex items-center gap-1">
+                      <Calendar size={12} />
+                      {gallery.release_date}
+                    </span>
+                  )}
+                  {gallery.source_url && (
+                    <a
+                      href={gallery.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-blue-400 hover:underline"
+                    >
+                      <ExternalLink size={12} />
+                      Source
+                    </a>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-zinc-800 bg-zinc-950/30 p-3 text-sm text-zinc-500">
+                No metadata yet. Use Metadata Search to enrich this gallery.
+              </div>
+            )}
+          </div>
         )}
-      </div>
 
-      {/* Image sort and grid */}
-      <div className="mb-4 flex justify-end">
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-          className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        >
-          <option value="newest">Newest first</option>
-          <option value="oldest">Oldest first</option>
-          <option value="largest">Largest first</option>
-          <option value="smallest">Smallest first</option>
-        </select>
-      </div>
+        <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">Linked People</p>
+            <span className="text-xs text-zinc-500">{linkedPeople?.length ?? 0} linked</span>
+          </div>
+          {!linkedPeople || linkedPeople.length === 0 ? (
+            <p className="text-sm text-zinc-500">No linked people yet.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {linkedPeople.map((person) => {
+                const photo = parsePhotos(person.photos)[0];
+                return (
+                  <Link
+                    key={person.id}
+                    to={`/people/${person.id}`}
+                    className="inline-flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1.5 hover:border-zinc-600 transition-colors"
+                  >
+                    {photo ? (
+                      <img src={photo} alt={person.name} className="h-7 w-7 rounded object-cover" />
+                    ) : (
+                      <div className="h-7 w-7 rounded bg-zinc-800 flex items-center justify-center">
+                        <span className="text-[10px] text-zinc-500">N/A</span>
+                      </div>
+                    )}
+                    <span className="text-sm text-zinc-200">{person.name}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
 
-      {/* Images grid */}
-      {loadingImages ? (
-        <Spinner />
-      ) : !imageList || imageList.items.length === 0 ? (
-        <EmptyState message="No images in this gallery." />
-      ) : (
-        <JustifiedGrid
-          items={gridItems}
-          rowHeight={240}
-          gap={4}
-          onItemClick={(index) => setLightboxIndex(index)}
-        />
-      )}
+      <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 md:p-4">
+        {loadingImages ? (
+          <Spinner />
+        ) : !imageList || imageList.items.length === 0 ? (
+          <EmptyState message="No images in this gallery." />
+        ) : (
+          <JustifiedGrid
+            items={gridItems}
+            rowHeight={230}
+            gap={4}
+            onItemClick={(index) => setLightboxIndex(index)}
+          />
+        )}
+      </section>
 
       {/* Lightbox */}
       {lightboxIndex !== null && (
