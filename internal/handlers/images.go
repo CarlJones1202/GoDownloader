@@ -78,6 +78,7 @@ func (h *ImageHandler) list(c *gin.Context) {
 		f.OnDisk = v == "true" || v == "1"
 	}
 
+	var images []models.Image
 	if f.OnDisk {
 		var result []models.Image
 		foundCount := 0
