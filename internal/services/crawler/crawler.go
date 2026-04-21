@@ -18,6 +18,7 @@ import (
 	"github.com/carlj/godownload/internal/database"
 	"github.com/carlj/godownload/internal/models"
 	"github.com/carlj/godownload/internal/services/linker"
+	"github.com/carlj/godownload/internal/services/video"
 )
 
 // ImageLink holds a discovered image link from a forum post.
@@ -304,8 +305,13 @@ func (c *Crawler) process(j job) {
 				queueURL = link.PageURL + "|" + link.ThumbURL
 			}
 
+			queueType := string(models.QueueTypeImage)
+			if video.IsVideoURL(link.PageURL) {
+				queueType = string(models.QueueTypeVideo)
+			}
+
 			item := &models.DownloadQueue{
-				Type:     string(models.QueueTypeImage),
+				Type:     queueType,
 				URL:      queueURL,
 				TargetID: &galleryID,
 			}

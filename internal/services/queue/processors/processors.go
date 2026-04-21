@@ -174,24 +174,35 @@ func (p *Processors) processVideo(ctx context.Context, item *models.DownloadQueu
 		return fmt.Errorf("processor: video download %q: %w", item.URL, err)
 	}
 
-	img := &models.Image{
-		GalleryID:   item.TargetID,
-		Filename:    result.Filename,
-		OriginalURL: &item.URL,
-		FileHash:    &result.FileHash,
-		IsVideo:     true,
-		VRMode:      string(models.VRModeNone),
-	}
+	var img *models.Image
+	existingImg, err := p.dbWriter.FindImageByGalleryAndFilename(ctx, item.TargetID, result.Filename)
+	if err == nil && existingImg != nil {
+		slog.Info("processor: video already exists, skipping record creation",
+			"image_id", existingImg.ID,
+			"filename", result.Filename,
+			"gallery_id", item.TargetID,
+		)
+		img = existingImg
+	} else {
+		img = &models.Image{
+			GalleryID:   item.TargetID,
+			Filename:    result.Filename,
+			OriginalURL: &item.URL,
+			FileHash:    &result.FileHash,
+			IsVideo:     true,
+			VRMode:      string(models.VRModeNone),
+		}
 
-	if err := p.dbWriter.CreateImage(ctx, img); err != nil {
-		return fmt.Errorf("processor: saving video record: %w", err)
-	}
+		if err := p.dbWriter.CreateImage(ctx, img); err != nil {
+			return fmt.Errorf("processor: saving video record: %w", err)
+		}
 
-	slog.Info("processor: video saved",
-		"image_id", img.ID,
-		"filename", result.Filename,
-		"hash", result.FileHash,
-	)
+		slog.Info("processor: video saved",
+			"image_id", img.ID,
+			"filename", result.Filename,
+			"hash", result.FileHash,
+		)
+	}
 
 	// Post-processing pipeline:
 	// 1. Extract metadata (ffprobe) and generate thumbnail (ffmpeg).

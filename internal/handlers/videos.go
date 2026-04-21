@@ -104,7 +104,7 @@ func (h *VideoHandler) redownload(c *gin.Context) {
 	item := &models.DownloadQueue{
 		Type:     string(models.QueueTypeVideo),
 		URL:      *img.OriginalURL,
-		TargetID: &img.ID,
+		TargetID: img.GalleryID,
 	}
 
 	if err := h.db.EnqueueItem(c.Request.Context(), item); err != nil {

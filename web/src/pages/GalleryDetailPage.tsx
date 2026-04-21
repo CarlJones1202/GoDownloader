@@ -259,176 +259,263 @@ export function GalleryDetailPage() {
 
   return (
     <>
-      <div className="mb-4">
-        <Link
-          to="/galleries"
-          className="text-sm text-zinc-400 hover:text-zinc-200 inline-flex items-center gap-1"
-        >
-          <ArrowLeft size={14} /> Back to galleries
-        </Link>
+    <div className="relative">
+      {/* Immersive Background Layer with Masked Fade */}
+      <div className="absolute inset-x-0 -top-6 -mx-6 h-[800px] pointer-events-none select-none overflow-hidden">
+        {gallery.local_thumbnail_path ? (
+          <div 
+            className="h-full w-full"
+            style={{ 
+              maskImage: 'linear-gradient(to bottom, black 0%, transparent 100%)',
+              WebkitMaskImage: 'linear-gradient(to bottom, black 0%, transparent 100%)'
+            }}
+          >
+            <img
+              src={`/data/thumbnails/${gallery.local_thumbnail_path.split('/').pop()}`}
+              alt=""
+              className="h-full w-full object-cover scale-150 blur-[120px] opacity-60"
+            />
+          </div>
+        ) : (
+          <div className="h-full w-full bg-zinc-900" />
+        )}
       </div>
 
-      <section className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 md:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            {isEditingTitle ? (
-              <div className="flex items-center gap-2">
-                <Input
-                  value={editedTitle}
-                  onChange={(e) => setEditedTitle(e.target.value)}
-                  className="w-64 h-8"
-                  autoFocus
-                  onKeyDown={(e) => e.key === 'Enter' && saveTitle()}
+      <div className="relative z-10">
+        <Link
+          to="/galleries"
+          className="group text-sm text-zinc-400 hover:text-white transition-colors inline-flex items-center gap-1.5 mb-8"
+        >
+          <div className="p-1.5 rounded-full bg-white/5 group-hover:bg-white/10 transition-colors">
+            <ArrowLeft size={16} />
+          </div>
+          Back to galleries
+        </Link>
+
+        <div className="flex flex-col md:flex-row gap-8 items-start md:items-end mb-12">
+          {/* Main Cover Image */}
+          <div className="relative group shrink-0">
+            <div className="absolute -inset-1 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
+            <div className="relative w-48 h-64 md:w-56 md:h-80 rounded-xl overflow-hidden bg-zinc-800 shadow-2xl ring-1 ring-white/10">
+              {gallery.local_thumbnail_path ? (
+                <img
+                  src={`/data/thumbnails/${gallery.local_thumbnail_path.split('/').pop()}`}
+                  alt={gallery.title}
+                  className="w-full h-full object-cover"
                 />
-                <Button size="sm" onClick={saveTitle} disabled={updateTitleMut.isPending}>
-                  <Save size={14} />
-                </Button>
-                <Button size="sm" variant="ghost" onClick={cancelEditTitle}>
-                  <X size={14} />
-                </Button>
-              </div>
-            ) : (
-              <h1 className="text-2xl md:text-3xl font-semibold text-white truncate">
-                {gallery.title || `Gallery #${gallery.id}`}
-              </h1>
-            )}
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-              <span className="rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-400">
-                Created {formatDate(gallery.created_at)}
-              </span>
-              {imageList && (
-                <span className="rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-400">
-                  {imageList.total_items} images
-                </span>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-zinc-600">
+                  <FileText size={48} />
+                </div>
               )}
-              {gallery.provider && <Badge>{gallery.provider}</Badge>}
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {!isEditingTitle && (
-              <Button variant="secondary" size="sm" onClick={startEditTitle}>
-                <Edit2 size={14} /> Edit
-              </Button>
+          <div className="flex-1 min-w-0 animate-fade-in-up">
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              {gallery.provider && (
+                <Badge variant="info" className="px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold">
+                  {gallery.provider}
+                </Badge>
+              )}
+              {imageList && (
+                <Badge variant="default" className="bg-white/5 text-zinc-300 border border-white/10 px-2.5 py-1">
+                  {imageList.total_items} Images
+                </Badge>
+              )}
+            </div>
+
+            {isEditingTitle ? (
+              <div className="flex items-center gap-2 mb-4 max-w-xl">
+                <Input
+                  value={editedTitle}
+                  onChange={(e) => setEditedTitle(e.target.value)}
+                  className="text-xl md:text-2xl font-bold bg-white/5 border-white/10 h-12"
+                  autoFocus
+                  onKeyDown={(e) => e.key === 'Enter' && saveTitle()}
+                />
+                <Button size="md" onClick={saveTitle} disabled={updateTitleMut.isPending} className="h-12 w-12 shrink-0">
+                  <Save size={20} />
+                </Button>
+                <Button size="md" variant="ghost" onClick={cancelEditTitle} className="h-12 w-12 shrink-0">
+                  <X size={20} />
+                </Button>
+              </div>
+            ) : (
+              <h1 className="text-3xl md:text-5xl font-bold text-white mb-4 tracking-tight drop-shadow-lg break-words">
+                {gallery.title || `Gallery #${gallery.id}`}
+              </h1>
             )}
-            <Button variant="secondary" size="sm" onClick={openMetadataSearch}>
-              <Search size={14} /> Metadata
+
+            <div className="flex flex-wrap items-center gap-3">
+              {!isEditingTitle && (
+                <button
+                  onClick={startEditTitle}
+                  className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-all"
+                  title="Edit title"
+                >
+                  <Edit2 size={18} />
+                </button>
+              )}
+              <div className="h-4 w-[1px] bg-white/10 mx-1" />
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 text-xs text-zinc-400">
+                <Calendar size={14} />
+                <span>Added {formatDate(gallery.created_at)}</span>
+              </div>
+              {gallery.release_date && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 text-xs text-zinc-400">
+                  <Star size={14} className="text-amber-400" />
+                  <span>Released {gallery.release_date}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Floating Action Bar */}
+          <div className="flex items-center gap-2 glass p-1.5 rounded-xl shadow-xl ring-1 ring-white/10">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={openMetadataSearch}
+              className="bg-white/5 border-transparent hover:bg-white/10"
+            >
+              <Search size={16} /> Metadata
             </Button>
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="bg-white/5 border border-transparent hover:border-white/10 rounded-lg px-3 py-1.5 text-xs text-zinc-200 focus:outline-none transition-all cursor-pointer"
             >
               <option value="newest">Newest first</option>
               <option value="oldest">Oldest first</option>
               <option value="largest">Largest first</option>
               <option value="smallest">Smallest first</option>
             </select>
+            <div className="w-[1px] h-6 bg-white/10 mx-1" />
             <Button
               variant="danger"
               size="sm"
               onClick={() => setConfirmDeleteGallery(true)}
+              className="bg-red-500/10 text-red-400 border-transparent hover:bg-red-500/20"
             >
-              <Trash2 size={14} /> Delete
+              <Trash2 size={16} />
             </Button>
           </div>
         </div>
+      </div>
 
-        {(gallery.url || hasMetadata) && (
-          <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr,1fr]">
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
-              <p className="text-xs uppercase tracking-wide text-zinc-500 mb-1">Gallery URL</p>
-              {gallery.url ? (
+    {/* Info Cards Grid - Moved outside hero container for cleaner separation */}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 px-6 mb-12">
+        {/* Source Card */}
+        <div className="glass-card p-5 rounded-2xl flex flex-col gap-3">
+          <div className="flex items-center gap-2 text-zinc-400 text-xs font-bold uppercase tracking-wider">
+            <ExternalLink size={14} /> Source Information
+          </div>
+          {gallery.url ? (
+            <div className="space-y-2">
+              <a
+                href={gallery.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group flex items-center gap-2 p-2.5 rounded-xl bg-white/5 border border-white/5 hover:bg-blue-500/10 hover:border-blue-500/30 transition-all"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-zinc-500 mb-0.5">Gallery URL</p>
+                  <p className="text-sm text-blue-400 truncate">{gallery.url}</p>
+                </div>
+                <ExternalLink size={14} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </a>
+              {gallery.source_url && gallery.source_url !== gallery.url && (
                 <a
-                  href={gallery.url}
+                  href={gallery.source_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-blue-400 hover:underline break-all"
+                  className="group flex items-center gap-2 p-2.5 rounded-xl bg-white/5 border border-white/5 hover:bg-blue-500/10 hover:border-blue-500/30 transition-all"
                 >
-                  {gallery.url}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-zinc-500 mb-0.5">Source Website</p>
+                    <p className="text-sm text-blue-400 truncate font-medium">View Original</p>
+                  </div>
+                  <ExternalLink size={14} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </a>
-              ) : (
-                <p className="text-sm text-zinc-500">No source URL saved.</p>
               )}
             </div>
+          ) : (
+            <p className="text-sm text-zinc-500 italic py-4">No source URL available.</p>
+          )}
+        </div>
 
-            {hasMetadata ? (
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 space-y-2">
-                <div className="flex items-center gap-2 text-zinc-300 text-sm font-medium">
-                  <FileText size={14} />
-                  Metadata
-                </div>
-                {gallery.description && (
-                  <p className="text-sm text-zinc-400 line-clamp-3">{gallery.description}</p>
-                )}
-                <div className="flex flex-wrap items-center gap-3 text-zinc-400 text-xs">
-                  {gallery.rating != null && gallery.rating > 0 && (
-                    <span className="inline-flex items-center gap-1">
-                      <Star size={12} className="text-amber-400" />
-                      {gallery.rating.toFixed(1)}
-                    </span>
-                  )}
-                  {gallery.release_date && (
-                    <span className="inline-flex items-center gap-1">
-                      <Calendar size={12} />
-                      {gallery.release_date}
-                    </span>
-                  )}
-                  {gallery.source_url && (
-                    <a
-                      href={gallery.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-blue-400 hover:underline"
-                    >
-                      <ExternalLink size={12} />
-                      Source
-                    </a>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-lg border border-dashed border-zinc-800 bg-zinc-950/30 p-3 text-sm text-zinc-500">
-                No metadata yet. Use Metadata Search to enrich this gallery.
+        {/* Metadata Card */}
+        <div className="md:col-span-2 glass-card p-5 rounded-2xl flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-zinc-400 text-xs font-bold uppercase tracking-wider">
+              <FileText size={14} /> Description & Details
+            </div>
+            {gallery.rating != null && gallery.rating > 0 && (
+              <div className="flex items-center gap-1 bg-amber-400/10 text-amber-400 px-2 py-0.5 rounded text-xs font-bold ring-1 ring-amber-400/20">
+                <Star size={12} className="fill-amber-400" />
+                {gallery.rating.toFixed(1)}
               </div>
             )}
           </div>
-        )}
+          {gallery.description ? (
+            <div className="relative">
+              <p className="text-sm text-zinc-300 leading-relaxed max-h-[120px] overflow-y-auto pr-2 custom-scrollbar">
+                {gallery.description}
+              </p>
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center border border-dashed border-white/5 rounded-xl py-6">
+              <p className="text-sm text-zinc-500">No description provided for this gallery.</p>
+            </div>
+          )}
+        </div>
 
-        <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">Linked People</p>
-            <span className="text-xs text-zinc-500">{linkedPeople?.length ?? 0} linked</span>
+        {/* People Card */}
+        <div className="md:col-span-3 glass-card p-5 rounded-2xl">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2 text-zinc-400 text-xs font-bold uppercase tracking-wider">
+              <Heart size={14} /> Linked People
+            </div>
+            <span className="text-[10px] bg-white/5 text-zinc-500 px-2 py-0.5 rounded-full border border-white/5">
+              {linkedPeople?.length ?? 0} total
+            </span>
           </div>
           {!linkedPeople || linkedPeople.length === 0 ? (
-            <p className="text-sm text-zinc-500">No linked people yet.</p>
+            <div className="py-4 border border-dashed border-white/5 rounded-xl text-center">
+              <p className="text-sm text-zinc-500 italic">No performers linked to this gallery.</p>
+            </div>
           ) : (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-3">
               {linkedPeople.map((person) => {
                 const photo = parsePhotos(person.photos)[0];
                 return (
                   <Link
                     key={person.id}
                     to={`/people/${person.id}`}
-                    className="inline-flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1.5 hover:border-zinc-600 transition-colors"
+                    className="group relative flex items-center gap-3 rounded-full bg-white/5 border border-white/5 pr-4 pl-1 py-1 hover:bg-white/10 hover:border-white/20 transition-all duration-300"
                   >
-                    {photo ? (
-                      <img src={photo} alt={person.name} className="h-7 w-7 rounded object-cover" />
-                    ) : (
-                      <div className="h-7 w-7 rounded bg-zinc-800 flex items-center justify-center">
-                        <span className="text-[10px] text-zinc-500">N/A</span>
-                      </div>
-                    )}
-                    <span className="text-sm text-zinc-200">{person.name}</span>
+                    <div className="relative h-8 w-8 rounded-full overflow-hidden ring-1 ring-white/10 group-hover:ring-blue-500/50 transition-all">
+                      {photo ? (
+                        <img src={photo} alt={person.name} className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                      ) : (
+                        <div className="h-full w-full bg-zinc-800 flex items-center justify-center text-[10px] text-zinc-500 font-bold uppercase">
+                          {person.name.charAt(0)}
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-sm font-medium text-zinc-300 group-hover:text-white transition-colors">
+                      {person.name}
+                    </span>
                   </Link>
                 );
               })}
             </div>
           )}
         </div>
-      </section>
+      </div>
 
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 md:p-4">
+      <section className="p-1">
         {loadingImages ? (
           <Spinner />
         ) : !imageList || imageList.items.length === 0 ? (
@@ -593,6 +680,7 @@ export function GalleryDetailPage() {
         }}
         onCancel={() => setConfirmDeleteImageId(null)}
       />
+      </div>
     </>
   );
 }
