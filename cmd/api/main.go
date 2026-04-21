@@ -104,7 +104,9 @@ func main() {
 	dbWriter := database.NewWriter(db)
 	defer dbWriter.Stop()
 
-	queueMgr := queue.New(db, dbWriter, cfg.Crawler.Workers, cfg.Crawler.MaxRetries)
+	queueMgr := queue.New(db, dbWriter, cfg.Queue.Workers, cfg.Crawler.MaxRetries)
+	queueMgr.SetProviderLimit(cfg.Queue.ProviderLimit)
+	queueMgr.SetProviderPool(cfg.Queue.ProviderPool)
 	processors.New(db, dbWriter, ripperReg, *cfg, thumbWorker, colorWorker, videoReg, videoWorker, trickplayWorker).Register(queueMgr)
 
 	// WebSocket hub for real-time download progress.

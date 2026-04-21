@@ -56,10 +56,17 @@ func (r *Imagetwist) Rip(ctx context.Context, pageURL string) ([]string, error) 
 		Jar:     jar,
 	}
 
-	// Step 1: GET the image page.
+	// Step 1: GET the image page. This first request often just sets a session cookie
+	// and doesn't return the actual image HTML (as seen in gallery-dl's behavior).
+	_, err := r.doGet(ctx, client, pageURL)
+	if err != nil {
+		return nil, fmt.Errorf("imagetwist: fetching cookie page: %w", err)
+	}
+
+	// Step 2: GET the page AGAIN now that the cookie jar is populated.
 	body, err := r.doGet(ctx, client, pageURL)
 	if err != nil {
-		return nil, fmt.Errorf("imagetwist: fetching page: %w", err)
+		return nil, fmt.Errorf("imagetwist: fetching image page: %w", err)
 	}
 
 	// Try to find the image directly.
@@ -107,6 +114,15 @@ func (r *Imagetwist) extractImage(body string) string {
 
 	if m := itwResponsiveRe.FindStringSubmatch(body); m != nil && isValid(m[1]) {
 		return itwEnsureAbsolute(m[1])
+	}
+
+	// Fallback (gallery-dl behavior): Just grab the first valid <img src="..."> on the page.
+	// ImageTwist frequently changes or drops their CSS classes.
+	fallbackRe := regexp.MustCompile(`(?i)<img[^>]+src="([^"]+)"`)
+	for _, m := range fallbackRe.FindAllStringSubmatch(body, -1) {
+		if isValid(m[1]) && !strings.Contains(m[1], "/imgs/") {
+			return itwEnsureAbsolute(m[1])
+		}
 	}
 
 	return ""

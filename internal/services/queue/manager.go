@@ -132,21 +132,64 @@ func (m *Manager) activeByProvider() map[string]int {
 	return counts
 }
 
-// selectBalanced picks items from pool such that no provider exceeds providerLimit
-// concurrent downloads (counting already-active ones). At most maxTotal items total.
+// selectBalanced picks items from pool respecting per-provider concurrency limits.
+// It uses a round-robin strategy: one item is picked from each provider per pass,
+// cycling until maxTotal items are selected or all providers are exhausted or at capacity.
+// This ensures every provider gets slots even when one provider dominates the pool
+// by creation-time ordering.
 func (m *Manager) selectBalanced(pool []models.DownloadQueue, maxTotal int) []models.DownloadQueue {
-	perProv := m.activeByProvider()
-	var selected []models.DownloadQueue
+	// Group pool items by provider, preserving intra-provider creation-time order.
+	type providerQueue struct {
+		name  string
+		items []models.DownloadQueue
+	}
+	byProvider := map[string]*providerQueue{}
+	var order []string // stable insertion order for round-robin
+
 	for _, item := range pool {
-		if len(selected) >= maxTotal {
-			break
-		}
 		p := providerFor(&item)
-		if perProv[p] >= m.providerLimit {
-			continue
+		if _, ok := byProvider[p]; !ok {
+			byProvider[p] = &providerQueue{name: p}
+			order = append(order, p)
 		}
-		selected = append(selected, item)
-		perProv[p]++
+		byProvider[p].items = append(byProvider[p].items, item)
+	}
+
+	// Per-provider remaining slots = providerLimit - currently active.
+	active := m.activeByProvider()
+	slots := make(map[string]int, len(order))
+	for _, p := range order {
+		if avail := m.providerLimit - active[p]; avail > 0 {
+			slots[p] = avail
+		}
+	}
+
+	// Round-robin: each pass picks at most 1 item from each provider.
+	// We continue until maxTotal is reached or no progress is made.
+	var selected []models.DownloadQueue
+	idx := make(map[string]int, len(order)) // next-item index per provider
+
+	for len(selected) < maxTotal {
+		progress := false
+		for _, p := range order {
+			if len(selected) >= maxTotal {
+				break
+			}
+			if slots[p] <= 0 {
+				continue
+			}
+			i := idx[p]
+			if i >= len(byProvider[p].items) {
+				continue
+			}
+			selected = append(selected, byProvider[p].items[i])
+			idx[p]++
+			slots[p]--
+			progress = true
+		}
+		if !progress {
+			break // all providers exhausted or at capacity
+		}
 	}
 	return selected
 }

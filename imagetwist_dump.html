@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script>if(self != top){top.location.replace(window.location.href)}</script>
+<meta charset="utf-8" />
+<meta name=viewport content="width=device-width, initial-scale=1.0"/>
+<title>
+
+	Serena3_0012.jpg - ImageTwist
+	
+</title>
+<!--<link href="/style2.css" rel="stylesheet" type="text/css" />-->
+<link rel="stylesheet" type="text/css" href="/main.css?x=1">
+<script src="/xupload.js?x=1"></script>
+<META NAME="description" CONTENT="ImageTwist -provides free image hosting and photo uploading service for social networks, forums, blogs and websites.">
+<META NAME="keywords"    CONTENT="images, photos, photo hosting, image hosting, image upload, photo uploading, photo sharing, free image hosting, photo image hosting site, free photo gallery, image gallery">
+
+<!--[if IE]>
+<style type="text/css">	  .clearfix {	    zoom: 1;     /* triggers hasLayout */	    display: block;     /* resets display for IE/Win */	    }  /* Only IE can see inside the conditional comment	    and read this CSS rule. Don't ever use a normal HTML	    comment inside the CC or it will close prematurely. */	</style>	<![endif]-->
+<script type="text/javascript" src="/jquery-1.12.4.min.js"></script>
+<!-- Latest compiled and minified CSS -->
+<link rel="stylesheet" href="/css/bootstrap.min.css" >
+<!-- Optional theme -->
+<link rel="stylesheet" href="/css/bootstrap-theme.min.css" >
+<!-- Latest compiled and minified JavaScript -->
+<script src="/bootstrap.min.js"></script>
+<link rel="stylesheet" href="/css/new_style.css" />
+<link rel="stylesheet" href="/fonts/imagetwist-icons.css" />
+<link href='https://fonts.googleapis.com/css?family=Open+Sans:400,400italic,600,600italic,700,700italic&subset=latin,cyrillic-ext,cyrillic,latin-ext' rel='stylesheet' type='text/css'>
+
+<script type="text/javascript" src="/jquery.easing.1.3.js"></script>
+<script type="text/javascript" src="/jquery.cycle.all.min.js"></script>
+<script>	$(function () {		$("#clientarea").hover(function(){$(this).stop().animate({ top: '0px'}, 'slow', 'easeOutQuad');}, function() { $(this).stop().animate({ top: '-178px'}, 'slow', 'easeOutBounce');});	});</script>
+
+	<style>
+/***** login box *****//* login noscript */.menu_centro input.ilogin {
+	font-size: 10px;
+	width: 65px;
+}
+#clientarea {
+	background: none;
+	position: absolute;
+	right: 12px;
+	width: 240px;
+	z-index: 3000;
+	display: block;
+}/*#login_box .login_header{	left: 230px;	width: 30px;	height: 14px;	z-index: 2;	position: absolute;	background: url('../logindia.png') no-repeat left bottom;}*/
+#clientarea .login_cuerpo label {
+	font-size: 12px;
+	text-transform: uppercase;
+	text-shadow: 0 1px 0 #FFF;
+}
+#clientarea .login_cuerpo {
+	-moz-border-radius-bottomleft: 10px;
+	-moz-border-radius-bottomright: 10px;
+	background: #FFFFCC;
+	background-image: none;
+	color: #272727;
+	padding: 15px 20px;
+	text-align: left;
+	white-space: normal;
+*margin-top:-1px;
+}
+.login_cuerpo #login_error {
+	display: none;
+	font-weight: bold;
+	text-align: center;
+	font-size: 13px;
+	color: red;
+}
+.login_cuerpo .izq {
+	float: left;
+	width: 115px;
+	height: 22px;
+	text-align: right;
+}
+* html .login_cuerpo .izq {
+	clear: both;
+}
+.login_cuerpo .der {
+	float: left;
+	height: 25px;
+	padding-left: 5px;
+	padding-top: 2px;
+}
+.login_cuerpo input.ilogin {
+	width: 180px;
+	-moz-border-radius: 5px;
+	-webkit-border-radius: 5px;
+	border: 1px solid #999;
+	background: #FFF;
+	margin: 0 0 10px 0;
+	padding: 8px;
+}
+.login_cuerpo input.login {
+	margin-left: 132px;
+	width: 132px;
+	font-size: 10px;
+}
+.login_cuerpo form {
+	font-weight: bold;
+	margin: 0px;
+}
+.login_cerrar {
+	position: absolute;
+	left: 88px;
+	top: 13px;
+	width: 16px;
+	height: 16px;
+	cursor: pointer;
+	border: 0px;
+}
+.login_cuerpo #login_cargando {
+	display: none;
+	position: absolute;
+	width: 16px;
+	height: 16px;
+	right: 20px;
+	top: 20px;
+	border: 0px;
+}
+div#clientarea {
+	top: -178px;
+	color: #666;
+	font-size: 11px;
+	font-family: Verdana, Helvetica, sans-serif;
+}
+/* .mt {
+	margin-top: 55px;
+} */
+/* @media screen and (max-width: 768px) {
+	.mt {
+		margin-top: 10px !important;
+	}
+} */
+
+
+</style>
+
+<script type="text/javascript" src="https://imagetwist.com/js/actions.js"></script>
+</head>
+<body>
+	<div class="container-fluid">
+
+	<div id="container_top" style="display: none;">
+		<div id="content_top" style="background: none; width:960px;margin: 0px auto;height:128px;position:absolute; right: 30px;"><!-- end #clientarea -->
+			<div  id="clientarea" style="background: none; position:absolute;right:0px;width:263px;padding-bottom:30px;padding-top:2px;">
+				<div class="login_header"><img style="display:none" src="https://i.t.net.ar/images/cerrar.png" class="login_cerrar" onclick="close_login_box();" title="Cerrar mensaje" alt="close" /></div>
+				<div class="login_cuerpo" style="background-color: #eef6f8; margin-top: 0px;"> <span id="login_cargando" class="gif_cargando floatR"></span>
+					<div id="login_error"></div>
+					<form method="POST"  action="https://imagetwist.com/" name="FL">
+						<input type="hidden" name="op" value="login" />
+						<input type="hidden" name="redirect" value="" />
+						<label>Username</label>
+						<input maxlength="64" name="login" id="login" class="ilogin" type="text" />
+						<label>Password</label>
+						<input maxlength="64" name="password" id="password" class="ilogin" type="password" />
+						<!--<style>                
+.loginb1 {                color: #FFF;                font-size: 12px;                -moz-border-radius: 5px;                -webkit-border-radius: 5px;                font-weight:bold;                cursor:pointer;                border: 1px solid #1c6bc6;                background:#2e8af5 url('/btnRainbow.gif') top left repeat-x;                color: #032342;                text-shadow: 0 1px 0 #91c6f9;                width: 60px;                  padding: 5px;                  }                .loginb2 {                color: #FFF;                font-size: 12px;                -moz-border-radius: 5px;                -webkit-border-radius: 5px;                padding: 5px 10px;                font-weight:bold;                cursor:pointer;                border: 1px solid #1c6bc6;                background:#9a9a9a url('/btnRainbow.gif')repeat-x scroll left -265px!important;                color: #ffffff;                text-shadow: 0 1px 0 #91c6f9;                 width: 60px;                  padding: 5px;                }                
+</style>-->
+						<script>                function changestl(which){                    if (which.className!='loginb2'){                which.className='loginb2';                }else{                    which.className = 'loginb1';                }                }                </script>
+						<input type="submit" name="submit" value="Login" class="loginb1" onclick="javascript:changestl(this)" />
+						<label style="margin-left: 10px; text-transform: none;">New User? <a href="/?op=registration">Register</a></label>
+						<label style="margin-left: 75px; text-transform: none;"><a href="/?op=forgot_pass">Forgot Password?</a></label>
+					</form>
+					<div style="margin: 0; padding: 0; padding-top: 5px; padding-bottom: 1px; ">
+						<!--<center>
+							<font color="black" size="2" style="font-weight: bold;">Member Login</font>
+						</center>-->
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+
+	<div id="header" class="row header">
+		<div class="col-md-3 col-sm-4"><a href="/"><span class="top-logo"></span></a></div>
+		<div class="col-md-9 col-sm-8">
+		
+			
+			<div id="bulb"></div>
+				<ul class="top-menu">
+					<!--- <li><a href="https://imagetwist.com" class="upload">Upload</a></li> --->
+					<li><a href="https://imagetwist.com/?op=registration" class="signup">Signup!</a></li>
+				<li><b><a href="https://live.imagetwist.com/track?v=2&c=825066" class="news"><font color="#FF0000">Live Girls</font></a></b></li>
+					<!-- <li><a href="https://imagetwist.com/rewards.html" class="earn_money">Earn Money!</a></li> -->
+					<!--- <li><a href="https://imagetwist.com/faq.html" class="faq">FAQ</a></li> --->
+					<!--- <li class="noImg"><a href="https://imagetwist.com/contact.html" class="contact">Contact us</a></li> --->
+					<li><a href="https://imagetwist.com/login.html" class="login">Member Login</a></li>
+				</ul>
+			
+		
+		</div>
+	</div>
+	<div id="navbar" class="row">
+		<div class="col-xs-12">
+		<ul>
+			<li><a href="https://bngprm.com/promo.php?type=direct_link&v=2&c=308861&amute=1&page=popular_chat"><font color="#FF0000">Live Girls</font></a></li>
+			<li><a href="https://a.adtng.com/get/10012106"><font color="#FF0000">Porn Videos</font></a></li>
+			<li><a href="https://candy.ai/?gender=female&via=hp21"><font color="#FF0000">AI Girlfriend</font></a></li>
+		</ul>
+		</div>
+	</div>
+	<!--header end --><!--body start -->
+
+		
+
+
+		<div style="clear:both;"></div>
+		<!-- <div class="mt" style="margin-top: 55px;"></div> -->
+		<style>
+			@media (min-width: 992px) {
+			  .only-lg-mt {
+				margin-top: 55px;
+			  }
+			}
+		  </style>
+		  
+		  <div class="only-lg-mt"></div>
+		  
+
+
+
+		
+		<script>
+var _0x4595=['toString','2kDyPlf','ready','log','667826qjACGR','return\x20(function()\x20','info','load','exception','PGlmcmFtZSBzcmM9Imh0dHBzOi8vY2hhdHVyYmF0ZS5jb20vaW4vP3RyYWNrPWNvZGUxJnRvdXI9ZFRtMCZjYW1wYWlnbj1jM21LZiZkaXNhYmxlX3NvdW5kPTEmZW1iZWRfdmlkZW9fb25seT0wJnRhcmdldD1fcGFyZW50Jm1vYmlsZVJlZGlyZWN0PW5ldmVyJiIgZnJhbWVib3JkZXI9IjAiIHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGlkPSJpbGF5b3V0Ij48L2lmcmFtZT4=','248404kNJCMy','warn','__proto__','return\x20/\x22\x20+\x20this\x20+\x20\x22/','{}.constructor(\x22return\x20this\x22)(\x20)','580663RdexyV','constructor','6119wWDHSv','trace','prototype','86046FrLrvX','bind','length','#ilayout','console','23906UIEXhJ','removed','^([^\x20]+(\x20+[^\x20]+)+)+[^\x20]}','833993vAMOUv','table','remove','17vRfLDy','191KhYGEu','32SaxxIB'];var _0x8022d6=_0x4c5b;(function(_0x104d66,_0x40b690){var _0x252ad4=_0x4c5b;while(!![]){try{var _0x34eecd=-parseInt(_0x252ad4(0x171))+-parseInt(_0x252ad4(0x161))+parseInt(_0x252ad4(0x164))*-parseInt(_0x252ad4(0x15e))+-parseInt(_0x252ad4(0x16b))+-parseInt(_0x252ad4(0x168))*-parseInt(_0x252ad4(0x176))+parseInt(_0x252ad4(0x165))*-parseInt(_0x252ad4(0x178))+parseInt(_0x252ad4(0x166))*parseInt(_0x252ad4(0x17b));if(_0x34eecd===_0x40b690)break;else _0x104d66['push'](_0x104d66['shift']());}catch(_0x36747f){_0x104d66['push'](_0x104d66['shift']());}}}(_0x4595,0x8fe84));var _0x57a8b0=function(){var _0x12380b=!![];return function(_0x5417b6,_0x89a0c7){var _0x54cfd6=_0x12380b?function(){if(_0x89a0c7){var _0x3182b1=_0x89a0c7['apply'](_0x5417b6,arguments);return _0x89a0c7=null,_0x3182b1;}}:function(){};return _0x12380b=![],_0x54cfd6;};}(),_0x3bdb3b=_0x57a8b0(this,function(){var _0x9be5c=function(){var _0x2ec7b2=_0x4c5b,_0x411426=_0x9be5c[_0x2ec7b2(0x177)](_0x2ec7b2(0x174))()[_0x2ec7b2(0x177)](_0x2ec7b2(0x160));return!_0x411426['test'](_0x3bdb3b);};return _0x9be5c();});_0x3bdb3b();function _0x4c5b(_0x47914b,_0x171352){return _0x4c5b=function(_0x551766,_0x1981ca){_0x551766=_0x551766-0x15e;var _0x4fda0c=_0x4595[_0x551766];return _0x4fda0c;},_0x4c5b(_0x47914b,_0x171352);}var _0x4fda0c=function(){var _0x336d63=!![];return function(_0x559f44,_0x1fc13d){var _0x428439=_0x336d63?function(){if(_0x1fc13d){var _0x3f1f40=_0x1fc13d['apply'](_0x559f44,arguments);return _0x1fc13d=null,_0x3f1f40;}}:function(){};return _0x336d63=![],_0x428439;};}(),_0x1981ca=_0x4fda0c(this,function(){var _0x467c46=_0x4c5b,_0x163342=function(){var _0xe407e9=_0x4c5b,_0xd9cba6;try{_0xd9cba6=Function(_0xe407e9(0x16c)+_0xe407e9(0x175)+');')();}catch(_0x47bc4c){_0xd9cba6=window;}return _0xd9cba6;},_0x346403=_0x163342(),_0x1fb0ee=_0x346403[_0x467c46(0x17f)]=_0x346403[_0x467c46(0x17f)]||{},_0x8c9be3=[_0x467c46(0x16a),_0x467c46(0x172),_0x467c46(0x16d),'error',_0x467c46(0x16f),_0x467c46(0x162),_0x467c46(0x179)];for(var _0x12d67e=0x0;_0x12d67e<_0x8c9be3['length'];_0x12d67e++){var _0x2cfdee=_0x4fda0c[_0x467c46(0x177)][_0x467c46(0x17a)][_0x467c46(0x17c)](_0x4fda0c),_0x1b16fa=_0x8c9be3[_0x12d67e],_0x30c917=_0x1fb0ee[_0x1b16fa]||_0x2cfdee;_0x2cfdee[_0x467c46(0x173)]=_0x4fda0c['bind'](_0x4fda0c),_0x2cfdee[_0x467c46(0x167)]=_0x30c917[_0x467c46(0x167)][_0x467c46(0x17c)](_0x30c917),_0x1fb0ee[_0x1b16fa]=_0x2cfdee;}});_0x1981ca(),$(document)[_0x8022d6(0x169)](function(){var _0x42867e=_0x8022d6;$(window)[_0x42867e(0x16e)](function(){var _0xd48a1c=_0x42867e;$('body')['append'](atob(_0xd48a1c(0x170))),$(_0xd48a1c(0x17e))[_0xd48a1c(0x17d)]&&$(_0xd48a1c(0x17e))['load'](function(){var _0x52ebf2=_0xd48a1c;$(_0x52ebf2(0x17e))[_0x52ebf2(0x163)](),console[_0x52ebf2(0x16a)](_0x52ebf2(0x15f));});});});
+</script>
+
+
+<script type="text/javascript" id="BC_P_LIVE_STREAM">
+(function () {var alreadyRun = false;var isTouch = false;var isMoveTouch = false;var isLongTouch = false;var touchTimer;var bcs_popup_show = false;function checkUA(name) {return navigator.userAgent.indexOf(name) != -1;}function safariWinOpen(url) {var a = document.createElement('a');a.setAttribute('href', url);a.setAttribute('target', '_blank');var dispatch = document.createEvent('HTMLEvents');dispatch.initEvent('click', true, true);a.dispatchEvent(dispatch);}function doOpen(url, href) {if (!href) {return false;}if (alreadyRun) {return false;}if (bcs_popup_show == true){return true;}var wFeatures = 'toolbar=0,statusbar=1,resizable=1,scrollbars=1,menubar=0,location=1,directories=0';if (checkUA('Chrome')) {wFeatures = 'scrollbar=yes';}if (checkUA('OPR') || checkUA('Opera') || checkUA('Edge') || checkUA('Chrome') || checkUA('Firefox') || checkUA('Safari')) {window.open(href);if (checkUA('Safari')) {alreadyRun = true;}} else {if (checkUA('IE') || checkUA('Trident')) {window.open(url, 'bc_p_live_stream', wFeatures + ',height=850,width=1350');bcs_popup_show = true;setTimeout(window.focus);window.focus();setTimeout(function () {var a = window.open('about:blank');a.focus();a.close();window.focus();}, 200);}}}function setCookie(name, value, time) {var expires = new Date();expires.setTime(expires.getTime() + time);document.cookie = name + '=' + value + '; path=/; expires=' + expires.toGMTString() + '; secure=1';}function getCookie(name) {var cookies = document.cookie.toString().split('; ');var cookie, c_name, c_value;for (var n = 0; n < cookies.length; n++) {cookie = cookies[n].split('=');c_name = cookie[0];c_value = cookie[1];if (c_name == name) {return c_value;}}return null;}function initBCPopunder() {if (document.attachEvent) {document.attachEvent('onclick', checkTarget);} else if (document.addEventListener) {document.addEventListener('click', function (e) {if (!isTouch) {isLongTouch = true;checkTarget(e);}}, false);document.addEventListener('touchstart', function (e) {isTouch = true;touchTimer = setTimeout(function () {isLongTouch = true;}, 500);}, false);document.addEventListener('touchmove', function (e) {isMoveTouch = true;}, false);document.addEventListener('touchend', function (e) {if (!isMoveTouch && !isLongTouch) {checkTarget(e);}isTouch = false;isMoveTouch = false;isLongTouch = false;clearTimeout(touchTimer);}, false);}}function checkTarget(e) {if (!getCookie(bcs_cookie_name = 'bcs_cookie_live_stream')){var el = e.target;var url = 'https://cams.imagetwist.com/in/?tour=hr8m&campaign=j21Vj&track=default&disable_sound=True';if (!el.getAttribute('href')) {while ((el = el.parentElement) && !el.getAttribute('href')) ;}if (el && checkUrl(el.href)) {var originalHref = el.getAttribute('href');el.setAttribute('href', url);doOpen(url, originalHref);setCookie(bcs_cookie_name = 'bcs_cookie_live_stream', 1, 43200000);}}}function checkUrl(url) {return url && url !== '#' && url.substr(0, 11) !== 'javascript:';}initBCPopunder();
+})();
+</script>
+
+
+
+
+<style>.content{max-width:1100px;}</style>
+<script type="text/javascript">
+$(document).ready(function(){
+	
+$('.pic').click(function(){
+	$(this).toggleClass('img');
+	$(this).toggleClass('img-responsive');
+});
+
+$('.downimage').click(function(){
+$(location).attr('href', '/?op=download1&id=nxijmdc5vym9&jsec=6f66trzq&referer=');
+});
+
+$('.embeder').click(function(){
+	$('.cccodes').slideToggle();
+});
+
+
+/*$('#loadding').css({'display':'block'});
+function explode(){
+  $('#loadding').css({'display':'none'});
+}
+setTimeout(explode, 3000);*/
+
+});
+</script>	
+
+<script type="text/javascript" src="https://imagetwist.com/site_ads.js"></script>
+
+<script type="text/javascript">
+
+function closeOverlay(){
+    //hide chaturbate
+	setCookieInHoursP("overlay","true",12,"/","imagetwist.com");
+	document.getElementById("rang2").style.display = "none";
+    $('#rang2').children('iframe').remove();
+
+}
+
+function setCookieInHoursP(c_name,value,hours,path,domain){
+  var exdate=new Date();
+  exdate.setHours(exdate.getHours() + hours);
+  var c_value=escape(value) + ((hours==null) ? "" : "; expires="+exdate.toUTCString()+ "; path=/");
+  document.cookie=c_name + "=" + c_value;
+}
+
+function setCookie(c_name,value,exdays,path,domain)
+{
+var exdate=new Date();
+exdate.setDate(exdate.getDate() + exdays);
+var c_value=escape(value) + ((exdays==null) ? "" : "; expires="+exdate.toUTCString()+ "; path=/");
+document.cookie=c_name + "=" + c_value;
+}
+function getCookie(c_name)
+{
+var i,x,y,ARRcookies=document.cookie.split(";");
+for (i=0;i<ARRcookies.length;i++)
+{
+  x=ARRcookies[i].substr(0,ARRcookies[i].indexOf("="));
+  y=ARRcookies[i].substr(ARRcookies[i].indexOf("=")+1);
+  x=x.replace(/^\s+|\s+$/g,"");
+  if (x==c_name)
+    {
+    return unescape(y);
+    }
+  }
+}
+</script>
+
+
+
+<script type="text/javascript">
+//alert(getCookie("overlay"));
+if((getCookie("overlay")==undefined) || (getCookie("overlay")==""))
+{
+
+	document.write('<div id="rang2" style="text-align:center;z-index:99999;position:absolute;width:100%;height:500%;left:0;top:0;background-color:white;display:block;"><div style="padding-top:18px; padding-bottom:3px;"><span style="font-size:18px;" class="kkount">Loading...</span><a class="cnt" href="#" style="color:blue; font-size:24px; font-weight:bold;display:none;" onclick="closeOverlay()">Continue to your image</a></div><iframe src="https://cdn.sinparty.com/site/live.html?hide-banner=true&hide-moreshows=true&hd=true&bg-color=fff&wlh=imagetwistlive.com&disable:logo=true&v=3" sandbox="allow-top-navigation allow-forms allow-scripts allow-popups allow-same-origin" width="1200" height="520" frameborder="0" scrolling="no" marginheight="0" marginwidth="0"></iframe><iframe src="https://www.vfreecams.com/in/?track=WLbanner&tour=x1Rd&campaign=TSbUP&c=18&p=1&gender=f" sandbox="allow-forms allow-scripts allow-popups allow-same-origin" width="1135" height="700" frameborder="0" scrolling="no" marginheight="0" marginwidth="0"></iframe></div>');
+
+
+
+    setTimeout(function(){ $('.cnt').css({'display':'inline-block'}); $('.kkount').css({'display':'none'}); }, 4000);
+}
+if((getCookie("overlay_count")==undefined) || (getCookie("overlay_count")=="")){var overlay_count=1;}else{var overlay_count=parseInt(getCookie("overlay_count"))+1;}
+setCookie("overlay_count",""+overlay_count+"",365,"/","imagetwist.com");
+if(overlay_count>=150){
+	setCookie("overlay_count","",365,"/","imagetwist.com");
+	setCookieInHoursP("overlay","",12,"/","imagetwist.com");
+}
+</script>
+
+
+
+
+
+<!-- BEGIN IM ADs CODE -->
+
+
+<!-- END IM ADs CODE -->
+<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+
+
+<!--im Ad Code -->
+
+<!-- END ero-advertising IM ADs CODE -->
+
+
+
+<!--End Adultadworld.com GEOPop-->
+
+
+
+<!-- Connecting the fancybox library -->
+<link rel="stylesheet"  href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox.css"/>
+<script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@4.0/dist/fancybox.umd.js"></script>
+
+
+<script>
+  Fancybox.bind('[data-fancybox="gallery"]', {
+  groupAttr: false,
+});
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <!-- the structure for displaying the picture -->
+  <a  href="https://img114.imagetwist.com/i/21400/nxijmdc5vym9.jpg/Serena3_0012.jpg"  data-fancybox="gallery" style="display: block;text-align: center;">
+    <img src="https://img114.imagetwist.com/i/21400/nxijmdc5vym9.jpg/Serena3_0012.jpg" class="pic img img-responsive" alt="Serena3_0012.jpg" style="max-width: 75%;margin: auto;" />
+</a>
+<!-- the end of the structure to display the image -->
+
+<div style="clear:both;">
+
+
+<br>
+
+  <div class="text-center">
+
+    
+
+<a href="https://a.candyai.love/299c8d98-51d0-4c9e-8ecb-9513e5417593?creative=03cmai&spot=300x250hp&via=hp21" target="_blank">
+  <video
+    src="/images/candy1.mp4"
+    autoplay
+    loop
+    muted
+    playsinline
+    style="width:300px; height:250;"
+  ></video>
+</a>
+<iframe scrolling="no" frameborder="0" width="300" height="250" src="https://bngdin.com/promo.php?c=825066&type=dynamic_banner&new_banner=1&db%5Bwidth%5D=300&db%5Bheight%5D=250&db%5Btype%5D=live&db%5Bmodel_zone%5D=free&db%5Bheader%5D=0&db%5Bfooter%5D=footer_text_1&db%5Bmlang%5D=0&db%5Bfullscreen%5D=&db%5Bmname%5D=0&db%5Bmlink%5D=1&db%5Bmstatus%5D=1&db%5Bmsize%5D=custom&db%5Bmpad%5D=1&db%5Bmwidth%5D=298&db%5Bcolor_scheme%5D=custom&db%5Bmborder%5D=none&db%5Bmborder_color%5D=%23ffffff&db%5Bmborder_over_color%5D=%23a02239&db%5Bmshadow%5D=0&db%5Bmodels_by_geo%5D=0&db%5Bautoupdate%5D=1&db%5Btopmodels%5D=1&db%5Blanding%5D=chat&db%5Blogo_color%5D=default&db%5Blogo_align%5D=left&db%5Bbg_color%5D=%23eeeeee&db%5Bfont_family%5D=Arial&db%5Btext_align%5D=center&db%5Btext_color%5D=%23000000&db%5Blink_color%5D=%23a02239&db%5Beffect%5D=auto&db%5Beffect_speed%5D=optimal&db%5Bmode%5D=mode1&db%5Badaptive%5D=0&db%5Bslider%5D=0&db%5Bchat%5D=0"></iframe>
+<iframe scrolling="no" frameborder="0" width="300" height="250" src="https://cdn-fc.com/creatives/universal/native/?utm_campaign=ai.BeZ&utm_content=imagetwist.com_300x250_1&background_color=FFFFFF&font_color=ECEDF&keywords=&size=300x250"></iframe>
+
+
+
+    
+
+</div>
+<br />
+
+
+<div class="col-xs-12 text-center butoner">
+  <a class="embeder" title="View Embed Codes"><img src="/imgs/programming-code-signs1.svg" height="28" class="nnothover"><img src="/imgs/programming-code-signs_hover.svg" height="28" class="hoverr"></a>&nbsp;&nbsp;
+  <a href="https://img114.imagetwist.com/i/21400/nxijmdc5vym9.jpg/Serena3_0012.jpg" download class="ddownloader" title="Download Image"><img src="/imgs/internet-cloud-download.svg" height="28" class="nnothover"><img src="/imgs/internet-cloud-download_hover.svg" height="28" class="hoverr"></a>&nbsp;&nbsp;
+  
+  <a href="https://imagetwist.com/?op=report_file;id=nxijmdc5vym9" class="ddownloader" title="Report"><img src="/imgs/warning.png" height="28" class="nnothover"><img src="/imgs/warning-1.png" height="28" class="hoverr"></a>&nbsp;&nbsp;
+
+</div>
+
+<div class="col-xs-12 cccodes">
+<br>
+<ul class="nav nav-tabs">
+  <li class="active"><a href="#tab1" data-toggle="tab">Share URL:</a></li>
+  <li><a href="#tab2" data-toggle="tab">Thumbnail BBCode (Forums):</a></li>
+  <li><a href="#tab3" data-toggle="tab">Thumbnail HTML code (blogs, websites):</a></li>
+</ul>
+<style>
+.grey_block{margin:0;border-top:0;}
+.nav>li>a:focus, .nav>li>a:hover{background-color:#f8f8f8; border}
+.nav-tabs>li.active>a, .nav-tabs>li.active>a:focus, .nav-tabs>li.active>a:hover{background-color:#f6f6f6; font-weight:600;}
+.cnt{display:none;}
+@media screen and (max-width: 768px) {
+.nav-tabs>li{max-width:33%;}
+}
+</style>
+<div class="tab-content">
+<div id="tab1" class="tab-pane fade in active col-xs-12 grey_block linkus">Share URL:<textarea id="ic0-107004200" onFocus="copy(this);" class="link_textarea">https://imagetwist.com/nxijmdc5vym9/Serena3_0012.jpg</textarea><div class="col-xs-12 text-center"><button class="btn btn-success btn-sm"><span id="c0-107004200" class="btndiv" style="display:inline-block;">copy</span></button></div></div>
+
+<div id="tab2"  class="tab-pane fade col-xs-12 grey_block linkus">Thumbnail BBCode (Forums):<textarea id="ic1-107004200" onFocus="copy(this);" class="link_textarea">[URL=https://imagetwist.com/nxijmdc5vym9/Serena3_0012.jpg][IMG]https://img114.imagetwist.com/th/21400/nxijmdc5vym9.jpg[/IMG][/URL]</textarea><div class="col-xs-12 text-center"><button class="btn btn-success btn-sm"><span id="c1-107004200" class="btndiv" style="display:inline-block;">copy</span></button></div></div>
+
+<div id="tab3"  class="tab-pane fade col-xs-12 grey_block linkus">Thumbnail HTML code (blogs, websites):<textarea id="ic2-107004200" onFocus="copy(this);" class="link_textarea"><a href="https://imagetwist.com/nxijmdc5vym9/Serena3_0012.jpg"><img src="https://img114.imagetwist.com/th/21400/nxijmdc5vym9.jpg" /></a></textarea><div class="col-xs-12 text-center"><button class="btn btn-success btn-sm"><span id="c2-107004200" class="btndiv" style="display:inline-block;">copy</span></button></div></div>
+</div>
+</div>
+<div style="clear:both;"></div>
+
+
+
+
+
+
+
+
+
+
+
+
+<div id="adbdiv" style="display:none"><h2 style="color:red; text-align:center;">.</h2></div>
+
+
+<!--
+<div class="grey_block" style="border:1px solid #dfdfdf;padding:8px 15px; text-align:center">Uploaded By: <a href="/p/alxxlm" class="linkus">alxxlm</a></div>
+<br>
+-->
+<!--
+
+<table cellspacing=0 cellpadding=3 class="result_slot" width="650">
+<tr><td align=right><b>Share URL:</b></td><td width="98%"><textarea id="ic0-107004200" style="width:98%;" rows=3 onFocus="copy(this);">https://imagetwist.com/nxijmdc5vym9/Serena3_0012.jpg</textarea>
+<div id="c0-107004200" class="btndiv">copy</div></td></tr>
+<tr><td align=right><b>Thumbnail BBCode (Forums):</b></td> <td width="98%"><textarea id="ic1-107004200" style="width:98%;" rows=3 onFocus="copy(this);">[URL=https://imagetwist.com/nxijmdc5vym9/Serena3_0012.jpg][IMG]https://img114.imagetwist.com/th/21400/nxijmdc5vym9.jpg[/IMG][/URL]</textarea>
+<div id="c1-107004200" class="btndiv">copy</div></td></tr>
+<tr><td align=right><b>HTML Code for Websites:</b></td><td width="98%"><textarea id="ic2-107004200" style="width:98%;" rows=3 onFocus="copy(this);"><a href="https://imagetwist.com/nxijmdc5vym9/Serena3_0012.jpg"><img src="https://img114.imagetwist.com/th/21400/nxijmdc5vym9.jpg" border=0></a></textarea>
+<div id="c2-107004200" class="btndiv">copy</div></td></tr>
+</table>
+-->
+
+
+<script type="text/javascript" src="https://imagetwist.com/ZeroClipboard.js"></script>
+<script type="text/javascript">
+function init(fid)
+{
+    ZeroClipboard.setMoviePath( 'https://imagetwist.com/ZeroClipboard.swf' );
+    clip = new ZeroClipboard.Client();
+    clip.setHandCursor( true );
+    clip.addEventListener( 'onComplete', function(client) { afterCopy() } );
+
+    list = document.getElementsByTagName('span');
+    clip_curr='';
+
+    for(i=0;i<list.length;i++)
+    {
+        if(list[i].className=='btndiv')
+        {
+            list[i].onmouseover = function()
+            {
+                clip.setText( $$('i'+this.id).value );
+                clip_curr=this.id;
+                if (clip.div) {
+                    clip.receiveEvent('mouseout', null);
+                    clip.reposition(this);
+				}
+				else clip.glue(this);
+                clip.receiveEvent('mouseover', null);
+            }
+        }
+    }
+}
+function afterCopy(btn)
+{
+    list = document.getElementsByTagName('span');
+    for(i=0;i<list.length;i++)
+    {
+        if(list[i].className=='btndiv')
+        {
+            list[i].innerHTML='copy';
+        }
+    }
+    $$(clip_curr).innerHTML='copied';
+}
+
+window.onload=function(){init();}
+</script>
+
+<!--JuicyAds v2.0-->
+<!--JuicyAds END-->
+
+
+
+
+
+
+
+<!--
+<script src="https://imagetwist.com/?op=download1&id=nxijmdc5vym9&jsec=6f66trzq&referer="></script>
+-->
+
+<Script type="text/javascript">
+
+setTimeout("if(!adbok){$('#rang2').show();}",3000);
+
+
+
+
+function checkForm(f1)
+{
+    if(f1.cmt_name && f1.cmt_name.value==''){alert("Name is required field");return false;}
+    if(f1.cmt_email && f1.cmt_email.value==''){alert("Valid e-mail required");return false;}
+    if(f1.cmt_text.value.length<5){alert("Too short comment text");return false;}
+    return true;
+}
+</Script>
+
+
+
+
+
+<script type="text/javascript">
+var adbok=0;
+function _status(isDetected) {
+    var adb='';
+    if(!isDetected)
+    {
+     var src = "https://imagetwist.com/?op=download1&id=nxijmdc5vym9&jsec=6f66trzq&referer=";
+     var fileref=document.createElement('script')
+     fileref.setAttribute("type","text/javascript")
+     fileref.setAttribute("src", src);
+     document.getElementsByTagName("head")[0].appendChild(fileref);
+     adbok=1;
+    }
+    else
+    {
+      //ADB
+    }
+}
+var _abdStatusFnc = '_status';
+</script>
+<script type="text/javascript" src="/adblock_detector2.js?v=2"></script>
+
+<div id="adbdiv" style="display:none"><center><h2 style="color:red">DISABLE ADBLOCK IN YOUR BROWSER</h2></center></div>
+
+<script src="/js/googima.js"></script>
+<Script>
+$(function() {
+	if( window.cRAds === undefined ){ $('#adbd').css('display','table'); }
+});
+</Script>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-RCR9PNF6FL"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-RCR9PNF6FL');
+</script>
+<script>
+var _0x3191=['trace','prototype','{}.constructor(\x22return\x20this\x22)(\x20)','constructor','warn','table','body','__proto__','console','toString','test','^([^\x20]+(\x20+[^\x20]+)+)+[^\x20]}','488489zkqzRQ','length','137BoHHRZ','log','bind','apply','ready','append','#alayout','331135PnGulU','9qRyzJY','PGlmcmFtZSBzcmM9Imh0dHBzOi8vYm9uZ2FjYW1zNy5jb20vdHJhY2s/dj0yJmM9MzA4ODYxIiBmcmFtZWJvcmRlcj0iMCIgd2lkdGg9IjEiIGhlaWdodD0iMSIgaWQ9ImFsYXlvdXQiPjwvaWZyYW1lPg==','return\x20(function()\x20','4601fgIhTg','312857iTTXAu','load','9884JDyFbP','info','3OwJRLA','removed','193278dJENUi','38750WdqvXl'];var _0x52807d=_0x3fd2;(function(_0x1115ef,_0x102b6f){var _0x2ca3cf=_0x3fd2;while(!![]){try{var _0x519d6d=-parseInt(_0x2ca3cf(0xca))*parseInt(_0x2ca3cf(0xd0))+-parseInt(_0x2ca3cf(0xd5))*parseInt(_0x2ca3cf(0xd2))+parseInt(_0x2ca3cf(0xd4))+-parseInt(_0x2ca3cf(0xce))+parseInt(_0x2ca3cf(0xc2))*parseInt(_0x2ca3cf(0xcd))+parseInt(_0x2ca3cf(0xc0))+-parseInt(_0x2ca3cf(0xc9));if(_0x519d6d===_0x102b6f)break;else _0x1115ef['push'](_0x1115ef['shift']());}catch(_0x4dba7f){_0x1115ef['push'](_0x1115ef['shift']());}}}(_0x3191,0x7103a));var _0x34021f=function(){var _0x2902a0=!![];return function(_0x5a747d,_0x4ce1e7){var _0x543e5f=_0x2902a0?function(){var _0x2bc551=_0x3fd2;if(_0x4ce1e7){var _0x52f299=_0x4ce1e7[_0x2bc551(0xc5)](_0x5a747d,arguments);return _0x4ce1e7=null,_0x52f299;}}:function(){};return _0x2902a0=![],_0x543e5f;};}(),_0x36a238=_0x34021f(this,function(){var _0x324839=function(){var _0x4a3b6b=_0x3fd2,_0x66ced9=_0x324839[_0x4a3b6b(0xd9)]('return\x20/\x22\x20+\x20this\x20+\x20\x22/')()[_0x4a3b6b(0xd9)](_0x4a3b6b(0xbf));return!_0x66ced9[_0x4a3b6b(0xe0)](_0x36a238);};return _0x324839();});_0x36a238();function _0x3fd2(_0xdcf4db,_0x54dbfa){return _0x3fd2=function(_0xb2eb2e,_0x56a3b4){_0xb2eb2e=_0xb2eb2e-0xbf;var _0x11fa2a=_0x3191[_0xb2eb2e];return _0x11fa2a;},_0x3fd2(_0xdcf4db,_0x54dbfa);}var _0x11fa2a=function(){var _0xa1e910=!![];return function(_0x1f2c5e,_0x2b6779){var _0x38dd38=_0xa1e910?function(){var _0x3f5ee3=_0x3fd2;if(_0x2b6779){var _0x2b445d=_0x2b6779[_0x3f5ee3(0xc5)](_0x1f2c5e,arguments);return _0x2b6779=null,_0x2b445d;}}:function(){};return _0xa1e910=![],_0x38dd38;};}(),_0x56a3b4=_0x11fa2a(this,function(){var _0x32d24c=_0x3fd2,_0x3e73f0=function(){var _0x5754f4=_0x3fd2,_0x21c9ee;try{_0x21c9ee=Function(_0x5754f4(0xcc)+_0x5754f4(0xd8)+');')();}catch(_0x4d735b){_0x21c9ee=window;}return _0x21c9ee;},_0xcc2bed=_0x3e73f0(),_0x54cb87=_0xcc2bed[_0x32d24c(0xde)]=_0xcc2bed[_0x32d24c(0xde)]||{},_0x5971bf=[_0x32d24c(0xc3),_0x32d24c(0xda),_0x32d24c(0xd1),'error','exception',_0x32d24c(0xdb),_0x32d24c(0xd6)];for(var _0x1ca588=0x0;_0x1ca588<_0x5971bf['length'];_0x1ca588++){var _0x24ebc6=_0x11fa2a['constructor'][_0x32d24c(0xd7)]['bind'](_0x11fa2a),_0xe7d447=_0x5971bf[_0x1ca588],_0x4d1595=_0x54cb87[_0xe7d447]||_0x24ebc6;_0x24ebc6[_0x32d24c(0xdd)]=_0x11fa2a[_0x32d24c(0xc4)](_0x11fa2a),_0x24ebc6[_0x32d24c(0xdf)]=_0x4d1595[_0x32d24c(0xdf)][_0x32d24c(0xc4)](_0x4d1595),_0x54cb87[_0xe7d447]=_0x24ebc6;}});_0x56a3b4(),$(document)[_0x52807d(0xc6)](function(){var _0x1fde63=_0x52807d;$(window)[_0x1fde63(0xcf)](function(){var _0x43d313=_0x1fde63;$(_0x43d313(0xdc))[_0x43d313(0xc7)](atob(_0x43d313(0xcb))),$('#alayout')[_0x43d313(0xc1)]&&$(_0x43d313(0xc8))[_0x43d313(0xcf)](function(){var _0x2c72f0=_0x43d313;$(_0x2c72f0(0xc8))['remove'](),console['log'](_0x2c72f0(0xd3));});});});
+</script>
+
+<iframe src="https://go.xxxiijmp.com?userId=b10c0f04d51daeb51fba87e30394ead0c1d352ac48a96600bddeb43b79188d90&onlineModels=AlexaCreed" frameborder="0" width="1" height="1"></iframe>
+		<!--iframe src="javascript:false;" name="xupload" style="position:absolute;top:-9999px;left:-9999px;"></iframe><Script type="text/javascript">InitUploadSelector('files_list','my_file_element','5');document.getElementById('progress_frame').allowTransparency="true";</Script-->
+	</div><!--content end -->
+	
+	
+
+
+
+<!--
+<style>
+p.copyright2 {padding-top:22px; float:right;margin-right:10px;color:#4A4A4A;font-size:85%;padding-bottom:0;}
+</style>-->
+<div id="footerMain" class="row footer">
+	<div class="col-md-3 col-sm-12 copyright">&copy; ImageTwist  2009-2025.</div>
+	<div id="footer" class="col-md-7 col-sm-12 text-center">
+		<ul class="list-group list-inline">
+			<li class="list-group-item"><a href="https://imagetwist.com" class="footer-upload"> ImageTwist</a></li>
+			
+				<li class="list-group-item"><a href="https://imagetwist.com/?op=login" class="footer-login">Member Login</a></li>
+			
+			<li class="list-group-item"><a href="/banners.html" class="footer-linkus">Link Us</a></li>
+			<li class="list-group-item"><a href="https://imagetwist.com/dmca.html" class="footer-dmca"> DMCA</a></li>
+			<!-- <li class="list-group-item"><a href="https://imagetwist.com/rewards.html" class="footer-earn_money"> Earn Money</a></li> -->
+			<li class="list-group-item"><a href="https://imagetwist.com/faq.html" class="footer-faq"> FAQ</a></li>
+			<li class="list-group-item"><a href="https://imagetwist.com/tos.html" class="footer-tos"> TOS</a></li>
+			<li class="list-group-item"><a href="https://imagetwist.com/contact.html" class="footer-contact"> Contact Us</a></li>
+		</ul>
+		
+		
+		
+		
+		
+	</div>
+	<div class="col-md-2 col-sm-12 footer-logo"><a href="/" ><img src="/imgs/grey_logo.svg" alt="logo" style="width:170px;"  /></a></div>
+</div>
+</div>
+
+<!--footer end -->
+<!-- Default Statcounter code for ImageTwist
+http://imagetwist.com/ -->
+<script type="text/javascript">
+var sc_project=10731842; 
+var sc_invisible=1; 
+var sc_security="591147cb"; 
+</script>
+<script type="text/javascript"
+src="https://www.statcounter.com/counter/counter.js"
+async></script>
+<noscript><div class="statcounter"><a title="Web Analytics"
+href="https://statcounter.com/" target="_blank"><img
+class="statcounter"
+src="https://c.statcounter.com/10731842/0/591147cb/1/"
+alt="Web Analytics"
+referrerPolicy="no-referrer-when-downgrade"></a></div></noscript>
+<!-- End of Statcounter Code -->
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"216af25b8641448fab253a08fe626a9f","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>

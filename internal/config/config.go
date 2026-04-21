@@ -14,6 +14,7 @@ type Config struct {
 	Server    ServerConfig    `yaml:"server"`
 	Database  DatabaseConfig  `yaml:"database"`
 	Crawler   CrawlerConfig   `yaml:"crawler"`
+	Queue     QueueConfig     `yaml:"queue"`
 	Providers ProvidersConfig `yaml:"providers"`
 	Storage   StorageConfig   `yaml:"storage"`
 	Log       LogConfig       `yaml:"log"`
@@ -23,6 +24,19 @@ type Config struct {
 // ProvidersConfig holds API keys and provider-specific settings.
 type ProvidersConfig struct {
 	StashDBAPIKey string `yaml:"stashdb_api_key"`
+}
+
+// QueueConfig holds download-queue concurrency settings.
+// These are intentionally separate from CrawlerConfig because the crawler
+// (page fetching) and the downloader (image fetching) have very different
+// concurrency needs.
+type QueueConfig struct {
+	// Workers is the total maximum number of concurrent download goroutines.
+	Workers int `yaml:"workers"`
+	// ProviderLimit is the maximum number of concurrent downloads per image host.
+	ProviderLimit int `yaml:"provider_limit"`
+	// ProviderPool is how many pending items are fetched per provider per poll tick.
+	ProviderPool int `yaml:"provider_pool"`
 }
 
 // ServerConfig holds HTTP server settings.
@@ -135,6 +149,11 @@ func defaults() *Config {
 		},
 		Providers: ProvidersConfig{
 			StashDBAPIKey: "",
+		},
+		Queue: QueueConfig{
+			Workers:       30, // 30 total concurrent downloads
+			ProviderLimit: 10, // up to 10 simultaneous downloads per image host
+			ProviderPool:  10, // fetch 10 queued items per provider per poll tick
 		},
 		Log: LogConfig{
 			Level:  "info",
