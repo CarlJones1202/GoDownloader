@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -75,7 +76,8 @@ func (r *Imagetwist) Rip(ctx context.Context, pageURL string) ([]string, error) 
 		// Generic continue button — post with default imgContinue.
 		params["imgContinue"] = "Continue to image ..."
 	} else {
-		return nil, fmt.Errorf("imagetwist: no image or continue button found on %s", pageURL)
+		_ = os.WriteFile("imagetwist_dump.html", []byte(body), 0644)
+		return nil, fmt.Errorf("imagetwist: no image or continue button found on %s (dumped to imagetwist_dump.html)", pageURL)
 	}
 
 	body2, err := r.doPost(ctx, client, pageURL, params)

@@ -248,40 +248,88 @@ func (db *DB) ClearQueue(ctx context.Context, status *string) (int64, error) {
 }
 
 // NextPendingItems fetches up to n pending queue items and marks them as active.
+// Deprecated: prefer PeekPendingItems + MarkItemsActive for balanced provider selection.
 func (db *DB) NextPendingItems(ctx context.Context, n int) ([]models.DownloadQueue, error) {
-	tx, err := db.BeginTxx(ctx, nil)
+	retems, err := db.PeekPendingItems(ctx, n)
 	if err != nil {
-		return nil, fmt.Errorf("beginning transaction: %w", err)
+		return nil, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	if len(retems) == 0 {
+		return nil, nil
+	}
+	ids := make([]int64, len(retems))
+	for i, it := range retems {
+		ids[i] = it.ID
+	}
+	if err := db.MarkItemsActive(ctx, ids); err != nil {
+		return nil, err
+	}
+	return retems, nil
+}
 
-	items := []models.DownloadQueue{}
-	err = tx.SelectContext(ctx, &items,
-		`SELECT id, type, url, target_id, status, retry_count, error_message, created_at
-		   FROM download_queue
+// PeekPendingItems fetches up to perProviderLimit pending items PER PROVIDER without
+// changing their status.  The "provider" is the hostname extracted from the URL
+// (the text between "//" and the next "/").  Using a window function ensures that
+// every image host gets equal representation in the candidate pool regardless of
+// creation-time ordering, so a provider with thousands of queued items cannot
+// starve other providers.
+//
+// The caller must call MarkItemsActive for the subset it will actually process.
+func (db *DB) PeekPendingItems(ctx context.Context, perProviderLimit int) ([]models.DownloadQueue, error) {
+	var items []models.DownloadQueue
+	// Extract hostname: text between "//" and the next "/" (or end of string).
+	// LOWER() normalises www.example.com and example.com into the same bucket.
+	err := db.SelectContext(ctx, &items, `
+		WITH ranked AS (
+		  SELECT
+		    id, type, url, target_id, status, retry_count, error_message, created_at,
+		    ROW_NUMBER() OVER (
+		      PARTITION BY LOWER(
+		        SUBSTR(url, INSTR(url, '//') + 2,
+		          CASE
+		            WHEN INSTR(SUBSTR(url, INSTR(url, '//') + 2), '/') > 0
+		            THEN INSTR(SUBSTR(url, INSTR(url, '//') + 2), '/') - 1
+		            ELSE LENGTH(url)
+		          END
+		        )
+		      )
+		      ORDER BY created_at ASC
+		    ) AS rn
+		  FROM download_queue
 		  WHERE status = ?
-		  ORDER BY created_at ASC
-		  LIMIT ?`,
-		models.QueueStatusPending, n,
+		)
+		SELECT id, type, url, target_id, status, retry_count, error_message, created_at
+		FROM ranked
+		WHERE rn <= ?
+		ORDER BY created_at ASC`,
+		models.QueueStatusPending, perProviderLimit,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("fetching pending queue items: %w", err)
+		return nil, fmt.Errorf("peeking pending queue items by provider: %w", err)
 	}
+	return items, nil
+}
 
-	for _, item := range items {
+// MarkItemsActive atomically sets the given IDs from pending → active.
+// IDs that are no longer pending (e.g., grabbed by a concurrent process) are silently skipped.
+func (db *DB) MarkItemsActive(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	tx, err := db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("MarkItemsActive: beginning transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+	for _, id := range ids {
 		if _, err := tx.ExecContext(ctx,
-			`UPDATE download_queue SET status = ? WHERE id = ?`,
-			models.QueueStatusActive, item.ID,
+			`UPDATE download_queue SET status = ? WHERE id = ? AND status = ?`,
+			models.QueueStatusActive, id, models.QueueStatusPending,
 		); err != nil {
-			return nil, fmt.Errorf("marking item %d active: %w", item.ID, err)
+			return fmt.Errorf("MarkItemsActive: marking item %d: %w", id, err)
 		}
 	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("committing transaction: %w", err)
-	}
-
-	return items, nil
+	return tx.Commit()
 }
 
 // RetryFailed sets all "failed" items back to "pending" and resets their retry counts.

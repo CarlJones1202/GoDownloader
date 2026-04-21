@@ -54,21 +54,18 @@ type ActiveDownload struct {
 }
 
 // Manager polls the database for pending queue items and dispatches them
-// to registered processors using a bounded worker pool.
+// to registered processors using a bounded worker pool with per-provider limits.
 type Manager struct {
 	db            *database.DB
 	dbWriter      DBWriter
 	processors    map[string]Processor
 	workers       int
 	providerLimit int // max concurrent downloads per provider
+	providerPool  int // items fetched from DB per provider per poll tick
 	maxRetries    int
 
-	// per-provider semaphores (lazy-initialised)
-	providerMu   sync.Mutex
-	providerSems map[string]chan struct{}
-
-	// active downloads for admin visibility
-	activeMu      sync.RWMutex
+	// active downloads — used for admin visibility and balanced scheduling
+	activeMu        sync.RWMutex
 	activeDownloads []ActiveDownload
 
 	paused atomic.Bool
@@ -97,9 +94,9 @@ func New(db *database.DB, dbWriter DBWriter, workers, maxRetries int) *Manager {
 		processors:    map[string]Processor{},
 		workers:       workers,
 		providerLimit: defaultProviderLimit,
+		providerPool:  10, // fetch 10 pending items per provider per poll tick
 		maxRetries:    maxRetries,
 		stopCh:        make(chan struct{}),
-		providerSems:  make(map[string]chan struct{}),
 	}
 }
 
@@ -110,16 +107,48 @@ func (m *Manager) SetProviderLimit(n int) {
 	}
 }
 
-// providerSem returns (and lazily creates) the semaphore for a given provider.
-func (m *Manager) providerSem(provider string) chan struct{} {
-	m.providerMu.Lock()
-	defer m.providerMu.Unlock()
-	if ch, ok := m.providerSems[provider]; ok {
-		return ch
+// SetProviderPool overrides how many items are fetched per provider per poll (default: 10).
+func (m *Manager) SetProviderPool(n int) {
+	if n >= 1 {
+		m.providerPool = n
 	}
-	ch := make(chan struct{}, m.providerLimit)
-	m.providerSems[provider] = ch
-	return ch
+}
+
+// activeCount returns the number of currently-running downloads.
+func (m *Manager) activeCount() int {
+	m.activeMu.RLock()
+	defer m.activeMu.RUnlock()
+	return len(m.activeDownloads)
+}
+
+// activeByProvider returns a snapshot of provider → currently-running count.
+func (m *Manager) activeByProvider() map[string]int {
+	m.activeMu.RLock()
+	defer m.activeMu.RUnlock()
+	counts := make(map[string]int, len(m.activeDownloads))
+	for _, ad := range m.activeDownloads {
+		counts[ad.Provider]++
+	}
+	return counts
+}
+
+// selectBalanced picks items from pool such that no provider exceeds providerLimit
+// concurrent downloads (counting already-active ones). At most maxTotal items total.
+func (m *Manager) selectBalanced(pool []models.DownloadQueue, maxTotal int) []models.DownloadQueue {
+	perProv := m.activeByProvider()
+	var selected []models.DownloadQueue
+	for _, item := range pool {
+		if len(selected) >= maxTotal {
+			break
+		}
+		p := providerFor(&item)
+		if perProv[p] >= m.providerLimit {
+			continue
+		}
+		selected = append(selected, item)
+		perProv[p]++
+	}
+	return selected
 }
 
 // providerFor extracts a normalised provider key from a queue item URL.
@@ -236,7 +265,7 @@ func (m *Manager) loop() {
 	ticker := time.NewTicker(defaultPollInterval)
 	defer ticker.Stop()
 
-	// Global semaphore to bound total concurrent workers.
+	// Global semaphore caps the total number of concurrent goroutines.
 	sem := make(chan struct{}, m.workers)
 
 	for {
@@ -248,38 +277,62 @@ func (m *Manager) loop() {
 				continue
 			}
 
+			// How many more workers can we start right now?
+			available := m.workers - m.activeCount()
+			if available <= 0 {
+				continue
+			}
+
+			// Fetch up to providerPool items PER PROVIDER from the DB.
+			// The window-function query partitions by hostname so every provider
+			// gets equal representation regardless of creation-time ordering.
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			items, err := m.db.NextPendingItems(ctx, m.workers)
+			pool, err := m.db.PeekPendingItems(ctx, m.providerPool)
 			cancel()
 
 			if err != nil {
 				slog.Error("queue: fetching pending items", "error", err)
 				continue
 			}
+			if len(pool) == 0 {
+				continue
+			}
 
-			for i := range items {
-				item := items[i]
+			// Pick a balanced subset: up to providerLimit concurrent per provider.
+			selected := m.selectBalanced(pool, available)
+			if len(selected) == 0 {
+				continue
+			}
+
+			// Atomically mark the selected items active in the DB.
+			ids := make([]int64, len(selected))
+			for i, s := range selected {
+				ids[i] = s.ID
+			}
+			markCtx, markCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if err := m.db.MarkItemsActive(markCtx, ids); err != nil {
+				slog.Error("queue: marking items active", "error", err)
+				markCancel()
+				continue
+			}
+			markCancel()
+
+			slog.Debug("queue: dispatching balanced batch",
+				"selected", len(selected),
+				"pool_size", len(pool),
+				"available_slots", available,
+			)
+
+			// Spawn a goroutine for each selected item.
+			for i := range selected {
+				item := selected[i]
 				provider := providerFor(&item)
-				provSem := m.providerSem(provider)
 
-				// Try to acquire the per-provider slot (non-blocking).
-				// If the provider is already at capacity, skip this item for
-				// now — it will be retried on the next poll tick.
-				select {
-				case provSem <- struct{}{}:
-					// acquired provider slot — continue to acquire global slot
-				default:
-					// Provider at capacity: reset item to pending so it is
-					// picked up again next poll.
-					slog.Debug("queue: provider at capacity, deferring item",
-						"id", item.ID, "provider", provider)
-					_ = m.dbWriter.UpdateQueueStatus(
-						context.Background(), item.ID, models.QueueStatusPending, nil)
-					continue
-				}
+				// Track before spawning so activeByProvider is accurate for any
+				// subsequent selectBalanced call within the same tick.
+				m.trackStarted(&item, provider)
 
-				// Acquire global slot (blocking — other items may release it).
-				sem <- struct{}{}
+				sem <- struct{}{} // acquire global slot
 				m.wg.Add(1)
 				go func() {
 					defer func() {
@@ -289,11 +342,9 @@ func (m *Manager) loop() {
 							_ = m.dbWriter.UpdateQueueStatus(context.Background(), item.ID, models.QueueStatusFailed, &msg)
 							m.trackFinished(item.ID)
 						}
-						<-provSem // release provider slot
-						<-sem     // release global slot
+						<-sem
 						m.wg.Done()
 					}()
-					m.trackStarted(&item, provider)
 					m.dispatch(&item)
 				}()
 			}
@@ -313,6 +364,7 @@ func (m *Manager) dispatch(item *models.DownloadQueue) {
 			models.QueueStatusFailed,
 			&msg,
 		)
+		m.trackFinished(item.ID)
 		return
 	}
 
@@ -359,5 +411,7 @@ func (m *Manager) dispatch(item *models.DownloadQueue) {
 		return
 	}
 
+	// Retry: increment counter, reset to pending. Item leaves the active list.
 	_ = m.dbWriter.IncrementRetry(statusCtx, item.ID)
+	m.trackFinished(item.ID)
 }
