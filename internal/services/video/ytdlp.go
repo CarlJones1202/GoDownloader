@@ -24,10 +24,8 @@ func NewYtDlpRipper(cookiesFile string) *YtDlpRipper {
 }
 
 func (r *YtDlpRipper) Hosts() []string {
-	return []string{
-		"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be",
-		"pornhub.com", "www.pornhub.com",
-	}
+	// Return empty to signify this is a generic fallback ripper.
+	return nil
 }
 
 // Rip uses yt-dlp to download the video to a temp directory, then returns

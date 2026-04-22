@@ -43,10 +43,11 @@ type Ripper interface {
 
 // Registry maps host strings to video Rippers.
 type Registry struct {
-	rippers   map[string]Ripper
-	client    *http.Client
-	destDir   string
-	userAgent string
+	rippers       map[string]Ripper
+	defaultRipper Ripper
+	client        *http.Client
+	destDir       string
+	userAgent     string
 }
 
 // NewRegistry creates a video ripper Registry that saves to destDir.
@@ -67,7 +68,12 @@ func NewRegistry(destDir string, client *http.Client, userAgent string) *Registr
 
 // Register adds a Ripper to the registry for all of its declared hosts.
 func (r *Registry) Register(rip Ripper) {
-	for _, host := range rip.Hosts() {
+	hosts := rip.Hosts()
+	if len(hosts) == 0 {
+		r.defaultRipper = rip
+		return
+	}
+	for _, host := range hosts {
 		r.rippers[strings.ToLower(host)] = rip
 	}
 }
@@ -76,26 +82,49 @@ func (r *Registry) Register(rip Ripper) {
 func (r *Registry) RipperFor(rawURL string) Ripper {
 	host := hostFromURL(rawURL)
 	if rip, ok := r.rippers[host]; ok {
+		slog.Debug("video: found ripper by exact host", "host", host)
 		return rip
 	}
 	bare := strings.TrimPrefix(host, "www.")
 	if rip, ok := r.rippers[bare]; ok {
+		slog.Debug("video: found ripper by bare host", "host", bare)
 		return rip
 	}
+	// Fallback to default ripper (e.g. yt-dlp) if it's a known video domain or extension.
+	if r.defaultRipper != nil && IsVideoURL(rawURL) {
+		slog.Debug("video: using default ripper fallback", "url", rawURL)
+		return r.defaultRipper
+	}
+	slog.Debug("video: no ripper found", "url", rawURL, "host", host)
 	return nil
 }
 
 // Download rips the video URL from the page and downloads the file.
 func (r *Registry) Download(ctx context.Context, pageURL string) (*Result, error) {
+	slog.Debug("video: Registry.Download starting", "url", pageURL)
 	rip := r.RipperFor(pageURL)
 	if rip == nil {
+		// Fallback for direct video URLs or generic sites.
+		if IsVideoURL(pageURL) {
+			slog.Info("video: no ripper for URL, attempting direct download", "url", pageURL)
+			result, err := r.downloadDirect(ctx, pageURL, pageURL)
+			if err != nil {
+				return nil, fmt.Errorf("video: direct download %q: %w", pageURL, err)
+			}
+			result.Title = filepath.Base(pageURL)
+			return result, nil
+		}
+		slog.Warn("video: no ripper and not a video URL", "url", pageURL)
 		return nil, fmt.Errorf("video: no ripper for %q", pageURL)
 	}
 
+	slog.Debug("video: using ripper", "url", pageURL, "ripper", fmt.Sprintf("%T", rip))
 	ripResult, err := rip.Rip(ctx, pageURL)
 	if err != nil {
+		slog.Error("video: rip failed", "url", pageURL, "error", err)
 		return nil, fmt.Errorf("video: ripping %q: %w", pageURL, err)
 	}
+	slog.Debug("video: rip success", "url", pageURL, "direct_url", ripResult.DirectURL)
 
 	// yt-dlp returns file:// URLs for already-downloaded local files.
 	if strings.HasPrefix(ripResult.DirectURL, "file://") {
@@ -256,7 +285,7 @@ func (r *Registry) downloadDirect(ctx context.Context, videoURL, referer string)
 		}
 	}
 
-	slog.Info("video: downloaded", "filename", filename, "hash", hash)
+	slog.Info("video: downloaded", "filename", filename, "hash", hash, "url", videoURL)
 
 	return &Result{
 		LocalPath: destPath,
@@ -269,7 +298,7 @@ func (r *Registry) downloadDirect(ctx context.Context, videoURL, referer string)
 func IsVideoURL(rawURL string) bool {
 	lower := strings.ToLower(rawURL)
 	// Check known video file extensions.
-	for _, ext := range []string{".mp4", ".mkv", ".webm", ".avi", ".mov", ".wmv", ".flv"} {
+	for _, ext := range []string{".mp4", ".mkv", ".webm", ".avi", ".mov", ".wmv", ".flv", ".m4v", ".mpg", ".mpeg", ".3gp"} {
 		if strings.HasSuffix(lower, ext) || strings.Contains(lower, ext+"?") {
 			return true
 		}
@@ -279,7 +308,9 @@ func IsVideoURL(rawURL string) bool {
 	bare := strings.TrimPrefix(host, "www.")
 	switch bare {
 	case "tnaflix.com", "pornhub.com", "pmvhaven.com",
-		"youtube.com", "youtu.be":
+		"youtube.com", "youtu.be", "vimeo.com", "dailymotion.com",
+		"spankbang.com", "xvideos.com", "xnxx.com", "redtube.com",
+		"youporn.com", "xhamster.com", "heavy-r.com", "motherless.com":
 		return true
 	}
 	return false

@@ -38,17 +38,19 @@ func (r *ImageBam) Hosts() []string {
 
 // Rip implements ripper.Ripper.
 func (r *ImageBam) Rip(ctx context.Context, pageURL string) ([]string, error) {
+	// Handle galleries
+	if strings.Contains(pageURL, "/gallery/") || strings.Contains(pageURL, "/view/G") {
+		return r.ripGallery(ctx, pageURL)
+	}
+
 	jar, _ := cookiejar.New(nil)
 
 	// Set both NSFW and SFW interstitial cookies to bypass the consent page.
-	// ImageBam checks "nsfw_inter" for NSFW content and "sfw_inter" for the
-	// general interstitial/ad gate. Both must be set.
 	bamURL, _ := url.Parse("https://www.imagebam.com")
 	jar.SetCookies(bamURL, []*http.Cookie{
 		{Name: "nsfw_inter", Value: "1", Path: "/"},
 		{Name: "sfw_inter", Value: "1", Path: "/"},
 	})
-	// Also set on the bare domain in case the request resolves there.
 	bareURL, _ := url.Parse("https://imagebam.com")
 	jar.SetCookies(bareURL, []*http.Cookie{
 		{Name: "nsfw_inter", Value: "1", Path: "/"},
@@ -60,99 +62,135 @@ func (r *ImageBam) Rip(ctx context.Context, pageURL string) ([]string, error) {
 		Jar:     jar,
 	}
 
-	// Try up to 2 times: the first request may return the interstitial page
-	// which sets additional cookies; the second request should then succeed.
+	// Try up to 2 times to handle the interstitial correctly.
 	for attempt := range 2 {
-		imgURL, isInterstitial, err := r.fetchAndParse(ctx, client, pageURL)
+		imgURLs, isInterstitial, err := r.fetchAndParse(ctx, client, pageURL)
 		if err != nil {
 			return nil, err
 		}
-		if imgURL != "" {
-			return []string{imgURL}, nil
+		if len(imgURLs) > 0 {
+			return imgURLs, nil
 		}
 		if !isInterstitial {
 			break
 		}
 		// On interstitial, the jar now has any cookies the server set.
-		// Brief pause before retry to avoid rate limiting.
 		if attempt == 0 {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(500 * time.Millisecond):
-			}
+			time.Sleep(500 * time.Millisecond)
 		}
 	}
 
 	return nil, fmt.Errorf("imagebam: no image found on %s", pageURL)
 }
 
+func (r *ImageBam) ripGallery(ctx context.Context, pageURL string) ([]string, error) {
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Timeout: 60 * time.Second, Jar: jar}
+	
+	// Pre-set cookies for gallery view too
+	bamURL, _ := url.Parse("https://www.imagebam.com")
+	jar.SetCookies(bamURL, []*http.Cookie{
+		{Name: "nsfw_inter", Value: "1", Path: "/"},
+		{Name: "sfw_inter", Value: "1", Path: "/"},
+	})
+
+	var allLinks []string
+	nextURL := pageURL
+
+	for nextURL != "" {
+		body, err := fetchPage(ctx, client, nextURL, r.userAgent)
+		if err != nil {
+			break
+		}
+
+		doc, err := goquery.NewDocumentFromReader(strings.NewReader(body))
+		if err != nil {
+			break
+		}
+
+		found := 0
+		// Gallery items are usually links starting with /view/ or /image/
+		doc.Find("a").Each(func(_ int, s *goquery.Selection) {
+			if href, ok := s.Attr("href"); ok {
+				// Avoid recursion back to gallery or current page
+				if (strings.Contains(href, "/view/") || strings.Contains(href, "/image/")) && 
+				   !strings.Contains(href, "/view/G") && !strings.Contains(href, "/gallery/") {
+					// Ensure absolute URL
+					if strings.HasPrefix(href, "/") {
+						href = "https://www.imagebam.com" + href
+					}
+					allLinks = append(allLinks, href)
+					found++
+				}
+			}
+		})
+
+		if found == 0 {
+			break
+		}
+
+		// Look for next page
+		nextURL = ""
+		doc.Find("a[rel='next'], a[aria-label='Next']").Each(func(_ int, s *goquery.Selection) {
+			if href, ok := s.Attr("href"); ok {
+				if strings.HasPrefix(href, "/") {
+					nextURL = "https://www.imagebam.com" + href
+				} else {
+					nextURL = href
+				}
+			}
+		})
+		
+		if nextURL != "" {
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+
+	// Deduplicate links
+	uniqueLinks := make([]string, 0, len(allLinks))
+	seen := make(map[string]bool)
+	for _, l := range allLinks {
+		if !seen[l] {
+			seen[l] = true
+			uniqueLinks = append(uniqueLinks, l)
+		}
+	}
+
+	if len(uniqueLinks) == 0 {
+		return nil, fmt.Errorf("imagebam: no images found in gallery %s", pageURL)
+	}
+
+	return uniqueLinks, nil
+}
+
 // fetchAndParse makes a single GET request and attempts to extract the image URL.
-// Returns (imageURL, isInterstitial, error).
-func (r *ImageBam) fetchAndParse(ctx context.Context, client *http.Client, pageURL string) (string, bool, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
+// Returns (imageURLs, isInterstitial, error).
+func (r *ImageBam) fetchAndParse(ctx context.Context, client *http.Client, pageURL string) ([]string, bool, error) {
+	body, err := fetchPage(ctx, client, pageURL, r.userAgent)
 	if err != nil {
-		return "", false, fmt.Errorf("imagebam: building request: %w", err)
+		return nil, false, err
 	}
-	req.Header.Set("User-Agent", r.userAgent)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	req.Header.Set("Referer", "https://www.imagebam.com/")
 
-	resp, err := client.Do(req)
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(body))
 	if err != nil {
-		return "", false, fmt.Errorf("imagebam: GET %q: %w", pageURL, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", false, fmt.Errorf("imagebam: GET %q returned %d", pageURL, resp.StatusCode)
+		return nil, false, fmt.Errorf("imagebam: parsing HTML: %w", err)
 	}
 
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
-	if err != nil {
-		return "", false, fmt.Errorf("imagebam: parsing HTML: %w", err)
-	}
-
-	// Primary selector: img.main-image (matches AG reference).
-	if src, ok := doc.Find("img.main-image").Attr("src"); ok && src != "" {
-		return src, false, nil
-	}
-
-	// Secondary: look for an <img> with an "onerror" attribute inside the
-	// image display container — some ImageBam pages use this pattern.
-	if src, ok := doc.Find(".image-container img").Attr("src"); ok && src != "" {
-		return src, false, nil
-	}
-
-	// Fallback: any <img> with a CDN or large image URL.
-	var fallbackURL string
-	doc.Find("img").Each(func(_ int, sel *goquery.Selection) {
-		if fallbackURL != "" {
-			return
-		}
-		src, exists := sel.Attr("src")
-		if !exists || src == "" {
-			return
-		}
-		lower := strings.ToLower(src)
-		// Skip thumbnails, icons, logos, tracking pixels.
-		if strings.Contains(lower, "logo") || strings.Contains(lower, "icon") ||
-			strings.Contains(lower, "thumb") || strings.Contains(lower, "avatar") ||
-			strings.Contains(lower, "pixel") || strings.Contains(lower, "blank") {
-			return
-		}
-		// Accept ImageBam CDN images or images from known CDN paths.
-		if strings.Contains(lower, "images") || strings.Contains(lower, "/files/") ||
-			strings.Contains(lower, "bam") {
-			fallbackURL = src
+	// Primary selector: img.main-image or img.img-responsive
+	var foundURL string
+	doc.Find("img.main-image, img.img-responsive, .image-container img").Each(func(_ int, s *goquery.Selection) {
+		if src, ok := s.Attr("src"); ok && src != "" {
+			if strings.Contains(src, "imagebam.com") || strings.Contains(src, "images") {
+				foundURL = src
+			}
 		}
 	})
-	if fallbackURL != "" {
-		return fallbackURL, false, nil
+	
+	if foundURL != "" {
+		return []string{foundURL}, false, nil
 	}
 
 	// Detect the interstitial page: it contains a "Continue to your image"
-	// link pointing back to the same URL.
 	isInterstitial := false
 	doc.Find("a").Each(func(_ int, sel *goquery.Selection) {
 		text := strings.TrimSpace(sel.Text())
@@ -161,7 +199,7 @@ func (r *ImageBam) fetchAndParse(ctx context.Context, client *http.Client, pageU
 		}
 	})
 
-	return "", isInterstitial, nil
+	return nil, isInterstitial, nil
 }
 
 // RipThumbnail implements ripper.ThumbnailRipper.
@@ -170,5 +208,8 @@ func (r *ImageBam) RipThumbnail(_ context.Context, thumbnailURL string) ([]strin
 	// https://thumbs2.imagebam.com/53/98/12/123456789.jpg
 	// Direct URLs look like:
 	// https://images2.imagebam.com/53/98/12/123456789.jpg
-	return []string{strings.ReplaceAll(thumbnailURL, "thumbs", "images")}, nil
+	res := strings.ReplaceAll(thumbnailURL, "thumbs", "images")
+	// Some variants might use /th/ vs /images/
+	res = strings.ReplaceAll(res, "/th/", "/images/")
+	return []string{res}, nil
 }

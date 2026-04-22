@@ -21,10 +21,10 @@ var vgTitleRe = regexp.MustCompile(`(?i)<b>([^<]{3,80})</b>`)
 
 // vgImgLinkRe captures <a href="..."><img src="..."></a> pairs from image host links.
 // It captures both the href (group 1) and the img src (group 2).
-var vgImgLinkRe = regexp.MustCompile(`(?i)<a[^>]+href="(https?://(?:www\.)?(?:imagebam\.com|imgbox\.com|imx\.to|turboimagehost\.com|vipr\.im|pixhost\.to|postimages\.org|postimg\.cc|imagetwist\.com|acidimg\.cc|mymypic\.net)[^"]*)"[^>]*>(?:[^<]*|<br[^>]*>|\s)*<img[^>]+src="([^"]*)"`)
+var vgImgLinkRe = regexp.MustCompile(`(?i)<a[^>]+href="(https?://(?:www\.)?(?:imagebam\.com|imgbox\.com|imx\.to|turboimagehost\.com|vipr\.im|pixhost\.(?:to|org)|postimages\.org|postimg\.cc|imagetwist\.com|acidimg\.cc|mymypic\.net)[^"]*)"[^>]*>(?:[^<]*|<br[^>]*>|\s)*<img[^>]+src="([^"]*)"`)
 
 // vgLinkRe captures image host links from <a> tags (fallback, no img src).
-var vgLinkRe = regexp.MustCompile(`(?i)<a[^>]+href="(https?://(?:www\.)?(?:imagebam\.com|imgbox\.com|imx\.to|turboimagehost\.com|vipr\.im|pixhost\.to|postimages\.org|postimg\.cc|imagetwist\.com|acidimg\.cc|mymypic\.net)[^"]*)"`)
+var vgLinkRe = regexp.MustCompile(`(?i)<a[^>]+href="(https?://(?:www\.)?(?:imagebam\.com|imgbox\.com|imx\.to|turboimagehost\.com|vipr\.im|pixhost\.(?:to|org)|postimages\.org|postimg\.cc|imagetwist\.com|acidimg\.cc|mymypic\.net)[^"]*)"`)
 
 // NewViperGirls creates a ViperGirls parser.
 func NewViperGirls() *ViperGirls { return &ViperGirls{} }
@@ -96,6 +96,14 @@ func parseForumPosts(body string, postRe, titleRe, imgLinkRe, linkRe *regexp.Reg
 			seen[href] = true
 
 			thumbURL := strings.TrimSpace(m[2])
+
+			// If the href is already a gallery URL or a direct image link,
+			// we prefer to scrape the page or download the direct link
+			// rather than relying on a potentially broken thumbnail transform.
+			if isGalleryURL(href) || isDirectImageURL(href) {
+				thumbURL = ""
+			}
+
 			galleries[title] = append(galleries[title], ImageLink{
 				PageURL:  href,
 				ThumbURL: thumbURL,
@@ -141,4 +149,48 @@ func itoa(n int) string {
 		s = "-" + s
 	}
 	return s
+}
+
+// isGalleryURL returns true if the URL looks like a gallery/album page.
+func isGalleryURL(u string) bool {
+	u = strings.ToLower(u)
+	return strings.Contains(u, "/gallery/") ||
+		strings.Contains(u, "/album/") ||
+		strings.Contains(u, "/view/g") || // ImageBam galleries
+		strings.Contains(u, "/p/") // Some hosts use /p/ for albums
+}
+
+// isDirectImageURL returns true if the URL looks like a direct link to an image.
+func isDirectImageURL(u string) bool {
+	u = strings.ToLower(u)
+
+	// Explicitly exclude common viewer page patterns
+	if strings.Contains(u, "/show/") || // Pixhost viewer
+		strings.Contains(u, "/p/") || // TurboImageHost / Imagetwist viewer
+		strings.Contains(u, "/view/") ||
+		strings.Contains(u, "img.php") {
+		return false
+	}
+
+	// Common direct link indicators
+	if strings.Contains(u, "/images/") ||
+		strings.Contains(u, "/i/") ||
+		strings.Contains(u, "/img/") {
+		return true
+	}
+
+	// Check for image extensions as a fallback
+	exts := []string{".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+	for _, ext := range exts {
+		if strings.HasSuffix(u, ext) {
+			// Double check it's not a known viewer host that uses .jpg for viewer pages
+			if strings.Contains(u, "pixhost.") || strings.Contains(u, "turboimagehost.") {
+				// For these hosts, we already checked for viewer patterns above.
+				// If we reached here, it might be a direct link if it also has /images/ or /i/.
+				return false // Safest fallback for these hosts
+			}
+			return true
+		}
+	}
+	return false
 }

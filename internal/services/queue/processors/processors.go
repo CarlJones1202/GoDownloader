@@ -162,16 +162,20 @@ func splitQueueURL(raw string) (pageURL, thumbnailURL string) {
 // then runs post-processing: ffprobe metadata extraction, thumbnail generation,
 // and trickplay sprite sheet creation.
 func (p *Processors) processVideo(ctx context.Context, item *models.DownloadQueue) error {
-	slog.Info("processor: downloading video", "url", item.URL, "queue_id", item.ID)
+	// The URL may contain a pipe-separated thumbnail URL appended by the
+	// crawler: "pageURL|thumbnailURL". Split them so we use the clean page URL.
+	pageURL, _ := splitQueueURL(item.URL)
+
+	slog.Info("processor: downloading video", "url", pageURL, "queue_id", item.ID)
 
 	// Use the dedicated video ripper registry if available.
 	if p.videoReg == nil {
 		return fmt.Errorf("processor: video registry not configured")
 	}
 
-	result, err := p.videoReg.Download(ctx, item.URL)
+	result, err := p.videoReg.Download(ctx, pageURL)
 	if err != nil {
-		return fmt.Errorf("processor: video download %q: %w", item.URL, err)
+		return fmt.Errorf("processor: video download %q: %w", pageURL, err)
 	}
 
 	var img *models.Image

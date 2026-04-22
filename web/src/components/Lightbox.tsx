@@ -184,7 +184,7 @@ export function Lightbox({ images, index, onClose, onIndexChange, imageData, onT
 
       {/* Image area */}
       <div 
-        className="flex-1 flex items-center justify-center relative group" 
+        className="flex-1 flex items-center justify-center relative group min-h-0" 
         onClick={(e) => {
           if (isFullScreen) {
             toggleFullscreen();
@@ -225,8 +225,8 @@ export function Lightbox({ images, index, onClose, onIndexChange, imageData, onT
           className={cn(
             "transition-all duration-500 ease-in-out select-none object-contain pointer-events-auto",
             isFullScreen 
-              ? "w-full h-full" 
-              : "max-w-[90vw] max-h-[75vh] md:max-h-[82vh] shadow-2xl rounded-sm"
+              ? "max-w-full max-h-full w-auto h-auto" 
+              : "max-w-[90vw] max-h-full w-auto h-auto shadow-2xl rounded-sm"
           )}
           draggable={false}
           onClick={(e) => e.stopPropagation()}
