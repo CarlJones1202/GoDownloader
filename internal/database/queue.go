@@ -312,15 +312,15 @@ func (db *DB) PeekPendingItems(ctx context.Context, perProviderLimit int, types 
 		    dq.id, dq.type, dq.url, dq.target_id, dq.status, dq.retry_count, dq.error_message, dq.created_at,
 		    ROW_NUMBER() OVER (
 		      PARTITION BY LOWER(
-		        SUBSTR(url, INSTR(url, '//') + 2,
+		        SUBSTR(dq.url, INSTR(dq.url, '//') + 2,
 		          CASE
-		            WHEN INSTR(SUBSTR(url, INSTR(url, '//') + 2), '/') > 0
-		            THEN INSTR(SUBSTR(url, INSTR(url, '//') + 2), '/') - 1
-		            ELSE LENGTH(url)
+		            WHEN INSTR(SUBSTR(dq.url, INSTR(dq.url, '//') + 2), '/') > 0
+		            THEN INSTR(SUBSTR(dq.url, INSTR(dq.url, '//') + 2), '/') - 1
+		            ELSE LENGTH(dq.url)
 		          END
 		        )
 		      )
-		      ORDER BY s.priority DESC, created_at ASC
+		      ORDER BY s.priority DESC, dq.created_at ASC
 		    ) AS rn
 		  FROM download_queue dq
 		  LEFT JOIN galleries g ON dq.target_id = g.id AND dq.type IN ('image', 'video')
