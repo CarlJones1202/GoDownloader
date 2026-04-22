@@ -74,12 +74,16 @@ func New(
 	}
 }
 
-// Register binds all processors to the queue Manager.
-func (p *Processors) Register(mgr *queue.Manager) {
-	mgr.RegisterProcessor(models.QueueTypeImage, queue.ProcessorFunc(p.processImage))
-	mgr.RegisterProcessor(models.QueueTypeVideo, queue.ProcessorFunc(p.processVideo))
-	mgr.RegisterProcessor(models.QueueTypeGallery, queue.ProcessorFunc(p.processGallery))
-	mgr.RegisterProcessor(models.QueueTypeCrawl, queue.ProcessorFunc(p.processCrawl))
+type queueManager interface {
+	RegisterProcessor(models.QueueType, queue.Processor)
+}
+
+// Register adds all video and image processors to the given manager.
+func (p *Processors) Register(m queueManager) {
+	m.RegisterProcessor(models.QueueTypeImage, queue.ProcessorFunc(p.processImage))
+	m.RegisterProcessor(models.QueueTypeVideo, queue.ProcessorFunc(p.processVideo))
+	m.RegisterProcessor(models.QueueTypeGallery, queue.ProcessorFunc(p.processGallery))
+	m.RegisterProcessor(models.QueueTypeCrawl, queue.ProcessorFunc(p.processCrawl))
 }
 
 // processImage downloads a single image page URL, saves the file, and

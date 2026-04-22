@@ -31,8 +31,12 @@ type ProvidersConfig struct {
 // (page fetching) and the downloader (image fetching) have very different
 // concurrency needs.
 type QueueConfig struct {
-	// Workers is the total maximum number of concurrent download goroutines.
+	// Workers is the total maximum number of concurrent image download goroutines.
 	Workers int `yaml:"workers"`
+	// VideoWorkers is the maximum number of concurrent video download goroutines.
+	VideoWorkers int `yaml:"video_workers"`
+	// CrawlWorkers is the maximum number of concurrent source crawl goroutines.
+	CrawlWorkers int `yaml:"crawl_workers"`
 	// ProviderLimit is the maximum number of concurrent downloads per image host.
 	ProviderLimit int `yaml:"provider_limit"`
 	// ProviderPool is how many pending items are fetched per provider per poll tick.
@@ -151,7 +155,9 @@ func defaults() *Config {
 			StashDBAPIKey: "",
 		},
 		Queue: QueueConfig{
-			Workers:       30, // 30 total concurrent downloads
+			Workers:       30, // 30 concurrent image downloads
+			VideoWorkers:  2,  // 2 concurrent video downloads (heavy I/O)
+			CrawlWorkers:  5,  // 5 concurrent crawls
 			ProviderLimit: 10, // up to 10 simultaneous downloads per image host
 			ProviderPool:  10, // fetch 10 queued items per provider per poll tick
 		},

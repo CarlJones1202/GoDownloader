@@ -104,9 +104,23 @@ func main() {
 	dbWriter := database.NewWriter(db)
 	defer dbWriter.Stop()
 
-	queueMgr := queue.New(db, dbWriter, cfg.Queue.Workers, cfg.Crawler.MaxRetries)
-	queueMgr.SetProviderLimit(cfg.Queue.ProviderLimit)
-	queueMgr.SetProviderPool(cfg.Queue.ProviderPool)
+	// Create separate worker pools for images, videos, and crawls.
+	imageQueue := queue.New(db, dbWriter, cfg.Queue.Workers, cfg.Crawler.MaxRetries)
+	imageQueue.SetTypeFilter([]models.QueueType{models.QueueTypeImage, models.QueueTypeGallery})
+	imageQueue.SetProviderLimit(cfg.Queue.ProviderLimit)
+	imageQueue.SetProviderPool(cfg.Queue.ProviderPool)
+
+	videoQueue := queue.New(db, dbWriter, cfg.Queue.VideoWorkers, cfg.Crawler.MaxRetries)
+	videoQueue.SetTypeFilter([]models.QueueType{models.QueueTypeVideo})
+	videoQueue.SetProviderLimit(1) // Usually one video at a time per host is better
+	videoQueue.SetProviderPool(2)
+
+	crawlQueue := queue.New(db, dbWriter, cfg.Queue.CrawlWorkers, cfg.Crawler.MaxRetries)
+	crawlQueue.SetTypeFilter([]models.QueueType{models.QueueTypeCrawl})
+	crawlQueue.SetProviderLimit(cfg.Queue.CrawlWorkers)
+	crawlQueue.SetProviderPool(cfg.Queue.CrawlWorkers)
+
+	queueMgr := queue.NewGroup(imageQueue, videoQueue, crawlQueue)
 	processors.New(db, dbWriter, ripperReg, *cfg, thumbWorker, colorWorker, videoReg, videoWorker, trickplayWorker).Register(queueMgr)
 
 	// WebSocket hub for real-time download progress.
@@ -180,8 +194,15 @@ func main() {
 	slog.Info("server stopped")
 }
 
+type queueManager interface {
+	Pause()
+	Resume()
+	IsPaused() bool
+	ActiveDownloads() []queue.ActiveDownload
+}
+
 // buildRouter wires up all routes and returns the configured gin.Engine.
-func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr *queue.Manager, al *linker.AutoLinker, enricher *providers.Enricher, storage config.StorageConfig, wsHub *ws.Hub, metadataSvc *providers.GalleryMetadataService, httpClient *http.Client, photoDownloader *personphoto.Downloader, requestShutdown func(reason string) bool) *gin.Engine {
+func buildRouter(db *database.DB, crawlerSvc *crawler.Crawler, queueMgr queueManager, al *linker.AutoLinker, enricher *providers.Enricher, storage config.StorageConfig, wsHub *ws.Hub, metadataSvc *providers.GalleryMetadataService, httpClient *http.Client, photoDownloader *personphoto.Downloader, requestShutdown func(reason string) bool) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.New()

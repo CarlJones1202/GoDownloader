@@ -64,6 +64,7 @@ type Manager struct {
 	providerLimit int // max concurrent downloads per provider
 	providerPool  int // items fetched from DB per provider per poll tick
 	maxRetries    int
+	typeFilter    []string
 
 	// active downloads — used for admin visibility and balanced scheduling
 	activeMu        sync.RWMutex
@@ -112,6 +113,14 @@ func (m *Manager) SetProviderLimit(n int) {
 func (m *Manager) SetProviderPool(n int) {
 	if n >= 1 {
 		m.providerPool = n
+	}
+}
+
+// SetTypeFilter restricts this manager to only processing specific queue types.
+func (m *Manager) SetTypeFilter(types []models.QueueType) {
+	m.typeFilter = make([]string, len(types))
+	for i, t := range types {
+		m.typeFilter[i] = string(t)
 	}
 }
 
@@ -334,7 +343,7 @@ func (m *Manager) loop() {
 			// The window-function query partitions by hostname so every provider
 			// gets equal representation regardless of creation-time ordering.
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			pool, err := m.db.PeekPendingItems(ctx, m.providerPool)
+			pool, err := m.db.PeekPendingItems(ctx, m.providerPool, m.typeFilter)
 			cancel()
 
 			if err != nil {

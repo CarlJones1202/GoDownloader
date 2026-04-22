@@ -194,6 +194,8 @@ export const admin = {
     delete: (id: number) =>
       request<void>(`/admin/queue/${id}`, { method: 'DELETE' }),
   },
+  prioritizeSource: (id: number) =>
+    request<{ message: string; bumped_items: number }>(`/admin/sources/${id}/prioritize`, { method: 'POST' }),
   recrawlSource: (id: number) =>
     request<{ message: string }>(`/admin/sources/${id}/recrawl`, { method: 'POST' }),
   bulkRedownload: (imageIds: number[]) =>

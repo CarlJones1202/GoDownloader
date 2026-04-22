@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { sources } from '@/lib/api';
+import { sources, admin } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 import {
   PageHeader,
@@ -12,7 +12,7 @@ import {
   Input,
   ConfirmDialog,
 } from '@/components/UI';
-import { Plus, Play, RotateCcw, Trash2 } from 'lucide-react';
+import { Plus, Play, RotateCcw, Trash2, ArrowUpCircle } from 'lucide-react';
 
 export function SourcesPage() {
   const queryClient = useQueryClient();
@@ -42,6 +42,14 @@ export function SourcesPage() {
   const recrawlMut = useMutation({
     mutationFn: (id: number) => sources.recrawl(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sources'] }),
+  });
+
+  const prioritizeMut = useMutation({
+    mutationFn: (id: number) => admin.prioritizeSource(id),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['sources'] });
+      alert(data.message || 'Source prioritized.');
+    },
   });
 
   const deleteMut = useMutation({
@@ -129,6 +137,16 @@ export function SourcesPage() {
                   disabled={crawlMut.isPending}
                 >
                   <Play size={14} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  title="Prioritize (move to top of queue)"
+                  onClick={() => prioritizeMut.mutate(src.id)}
+                  disabled={prioritizeMut.isPending}
+                  className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10"
+                >
+                  <ArrowUpCircle size={14} />
                 </Button>
                 <Button
                   variant="ghost"

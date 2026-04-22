@@ -100,6 +100,9 @@ export interface QueueStats {
   completed: number;
   failed: number;
   paused: number;
+  pending_images?: number;
+  pending_videos?: number;
+  pending_others?: number;
 }
 
 export interface DownloadStats {

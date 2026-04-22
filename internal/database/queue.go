@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/carlj/godownload/internal/models"
+	"github.com/jmoiron/sqlx"
 )
 
 // QueueFilter holds optional filter parameters for ListQueue.
@@ -30,7 +31,7 @@ func (db *DB) ListQueue(ctx context.Context, f QueueFilter) ([]models.DownloadQu
 	                 s.name AS source_name
 	            FROM download_queue dq
 	       LEFT JOIN galleries g ON dq.target_id = g.id AND dq.type IN ('image', 'video')
-	       LEFT JOIN sources   s ON g.source_id = s.id
+	       LEFT JOIN sources   s ON (CASE WHEN dq.type IN ('image', 'video') THEN g.source_id ELSE dq.target_id END) = s.id
 	           WHERE 1=1`
 	args := []any{}
 
@@ -160,6 +161,10 @@ type QueueStats struct {
 	Completed int64 `db:"completed" json:"completed"`
 	Failed    int64 `db:"failed"    json:"failed"`
 	Paused    int64 `db:"paused"    json:"paused"`
+
+	PendingImages  int64 `json:"pending_images"`
+	PendingVideos  int64 `json:"pending_videos"`
+	PendingOthers  int64 `json:"pending_others"`
 }
 
 // GetQueueStats returns aggregate queue counts by status.
@@ -195,6 +200,28 @@ func (db *DB) GetQueueStats(ctx context.Context) (*QueueStats, error) {
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterating queue stats: %w", err)
+	}
+
+	// Fetch pending breakdown by type
+	typeBreakdown, err := db.QueryContext(ctx,
+		`SELECT type, COUNT(*) as cnt FROM download_queue WHERE status = 'pending' GROUP BY type`,
+	)
+	if err == nil {
+		defer typeBreakdown.Close()
+		for typeBreakdown.Next() {
+			var t string
+			var cnt int64
+			if err := typeBreakdown.Scan(&t, &cnt); err == nil {
+				switch models.QueueType(t) {
+				case models.QueueTypeImage:
+					stats.PendingImages = cnt
+				case models.QueueTypeVideo:
+					stats.PendingVideos = cnt
+				default:
+					stats.PendingOthers += cnt
+				}
+			}
+		}
 	}
 
 	return stats, nil
@@ -249,8 +276,8 @@ func (db *DB) ClearQueue(ctx context.Context, status *string) (int64, error) {
 
 // NextPendingItems fetches up to n pending queue items and marks them as active.
 // Deprecated: prefer PeekPendingItems + MarkItemsActive for balanced provider selection.
-func (db *DB) NextPendingItems(ctx context.Context, n int) ([]models.DownloadQueue, error) {
-	retems, err := db.PeekPendingItems(ctx, n)
+func (db *DB) NextPendingItems(ctx context.Context, n int, types []string) ([]models.DownloadQueue, error) {
+	retems, err := db.PeekPendingItems(ctx, n, types)
 	if err != nil {
 		return nil, err
 	}
@@ -275,14 +302,14 @@ func (db *DB) NextPendingItems(ctx context.Context, n int) ([]models.DownloadQue
 // starve other providers.
 //
 // The caller must call MarkItemsActive for the subset it will actually process.
-func (db *DB) PeekPendingItems(ctx context.Context, perProviderLimit int) ([]models.DownloadQueue, error) {
+func (db *DB) PeekPendingItems(ctx context.Context, perProviderLimit int, types []string) ([]models.DownloadQueue, error) {
 	var items []models.DownloadQueue
-	// Extract hostname: text between "//" and the next "/" (or end of string).
-	// LOWER() normalises www.example.com and example.com into the same bucket.
-	err := db.SelectContext(ctx, &items, `
+	
+	// Base query using a window function for round-robin provider selection.
+	innerQuery := `
 		WITH ranked AS (
 		  SELECT
-		    id, type, url, target_id, status, retry_count, error_message, created_at,
+		    dq.id, dq.type, dq.url, dq.target_id, dq.status, dq.retry_count, dq.error_message, dq.created_at,
 		    ROW_NUMBER() OVER (
 		      PARTITION BY LOWER(
 		        SUBSTR(url, INSTR(url, '//') + 2,
@@ -293,17 +320,33 @@ func (db *DB) PeekPendingItems(ctx context.Context, perProviderLimit int) ([]mod
 		          END
 		        )
 		      )
-		      ORDER BY created_at ASC
+		      ORDER BY s.priority DESC, created_at ASC
 		    ) AS rn
-		  FROM download_queue
-		  WHERE status = ?
+		  FROM download_queue dq
+		  LEFT JOIN galleries g ON dq.target_id = g.id AND dq.type IN ('image', 'video')
+		  LEFT JOIN sources   s ON (CASE WHEN dq.type IN ('image', 'video') THEN g.source_id ELSE dq.target_id END) = s.id
+		  WHERE dq.status = ?`
+
+	args := []any{models.QueueStatusPending}
+
+	if len(types) > 0 {
+		query, typeArgs, err := sqlx.In(` AND dq.type IN (?)`, types)
+		if err != nil {
+			return nil, fmt.Errorf("building IN clause: %w", err)
+		}
+		innerQuery += query
+		args = append(args, typeArgs...)
+	}
+
+	innerQuery += `
 		)
 		SELECT id, type, url, target_id, status, retry_count, error_message, created_at
 		FROM ranked
 		WHERE rn <= ?
-		ORDER BY created_at ASC`,
-		models.QueueStatusPending, perProviderLimit,
-	)
+		ORDER BY created_at ASC`
+	args = append(args, perProviderLimit)
+
+	err := db.SelectContext(ctx, &items, innerQuery, args...)
 	if err != nil {
 		return nil, fmt.Errorf("peeking pending queue items by provider: %w", err)
 	}
@@ -340,6 +383,26 @@ func (db *DB) RetryFailed(ctx context.Context) (int64, error) {
 	)
 	if err != nil {
 		return 0, fmt.Errorf("retrying failed items: %w", err)
+	}
+	return result.RowsAffected()
+}
+
+// BumpSourceInQueue sets a very old created_at for all pending items of a source,
+// effectively moving them to the top of the queue for their priority level.
+func (db *DB) BumpSourceInQueue(ctx context.Context, sourceID int64) (int64, error) {
+	result, err := db.ExecContext(ctx, `
+		UPDATE download_queue
+		   SET created_at = '1970-01-01 00:00:00'
+		 WHERE id IN (
+		   SELECT dq.id
+		     FROM download_queue dq
+		LEFT JOIN galleries g ON dq.target_id = g.id AND dq.type IN ('image', 'video')
+		    WHERE dq.status = 'pending'
+		      AND (CASE WHEN dq.type IN ('image', 'video') THEN g.source_id ELSE dq.target_id END) = ?
+		 )`, sourceID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("bumping source %d in queue: %w", sourceID, err)
 	}
 	return result.RowsAffected()
 }

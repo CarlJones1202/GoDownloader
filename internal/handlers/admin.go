@@ -15,17 +15,24 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type queueManager interface {
+	Pause()
+	Resume()
+	IsPaused() bool
+	ActiveDownloads() []queue.ActiveDownload
+}
+
 // AdminHandler handles HTTP requests for the /api/v1/admin resource.
 type AdminHandler struct {
 	db              *database.DB
 	crawler         *crawler.Crawler
-	queueMgr        *queue.Manager
+	queueMgr        queueManager
 	linker          *linker.AutoLinker
 	requestShutdown func(reason string) bool
 }
 
 // NewAdminHandler creates an AdminHandler.
-func NewAdminHandler(db *database.DB, c *crawler.Crawler, qm *queue.Manager, al *linker.AutoLinker, requestShutdown func(reason string) bool) *AdminHandler {
+func NewAdminHandler(db *database.DB, c *crawler.Crawler, qm queueManager, al *linker.AutoLinker, requestShutdown func(reason string) bool) *AdminHandler {
 	return &AdminHandler{db: db, crawler: c, queueMgr: qm, linker: al, requestShutdown: requestShutdown}
 }
 
@@ -41,6 +48,7 @@ func (h *AdminHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/queue/:id/retry", h.retryQueueItem)
 	rg.POST("/queue/retry-failed", h.queueRetryFailed)
 	rg.DELETE("/queue/:id", h.deleteQueueItem)
+	rg.POST("/sources/:id/prioritize", h.prioritizeSource)
 	rg.POST("/sources/:id/recrawl", h.recrawlSource)
 	rg.POST("/images/redownload", h.bulkRedownload)
 	rg.POST("/galleries/cleanup", h.galleryCleanup)
@@ -284,6 +292,45 @@ func (h *AdminHandler) recrawlSource(c *gin.Context) {
 	h.crawler.EnqueueSourceFull(src)
 	slog.Info("admin: source recrawl enqueued", "source_id", id)
 	respondOK(c, gin.H{"message": "recrawl enqueued", "source_id": id})
+}
+
+// prioritizeSource bumps a source to the top of the queue by increasing its
+// priority and updating the created_at of its pending items.
+func (h *AdminHandler) prioritizeSource(c *gin.Context) {
+	id, ok := parseIDParam(c)
+	if !ok {
+		return
+	}
+
+	ctx := c.Request.Context()
+	src, err := h.db.GetSource(ctx, id)
+	if err != nil {
+		handleDBError(c, err)
+		return
+	}
+
+	// Bump priority if it's not already very high.
+	if src.Priority < 100 {
+		src.Priority = 100
+		if err := h.db.UpdateSource(ctx, src); err != nil {
+			handleDBError(c, err)
+			return
+		}
+	}
+
+	// Bump pending items in the queue.
+	bumped, err := h.db.BumpSourceInQueue(ctx, id)
+	if err != nil {
+		handleDBError(c, err)
+		return
+	}
+
+	slog.Info("admin: source prioritized", "source_id", id, "bumped_items", bumped)
+	respondOK(c, gin.H{
+		"message":      "source prioritized and items bumped to top",
+		"source_id":    id,
+		"bumped_items": bumped,
+	})
 }
 
 // bulkRedownload request body.

@@ -29,6 +29,8 @@ import {
   Sparkles,
   Download,
   Globe,
+  Image as ImageIcon,
+  Video as VideoIcon,
 } from 'lucide-react';
 import { usePagination } from '@/hooks/usePagination';
 
@@ -205,8 +207,10 @@ export function AdminPage() {
         <div className="lg:col-span-8 space-y-6">
           {/* Stats Bar */}
           {stats && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <StatCard label="Pending" value={stats.pending} icon={<Clock className="text-amber-400" size={20} />} />
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
+              <StatCard label="Total Pending" value={stats.pending} icon={<Clock className="text-amber-400" size={20} />} />
+              <StatCard label="Images Queued" value={stats.pending_images || 0} icon={<ImageIcon className="text-purple-400" size={20} />} />
+              <StatCard label="Videos Queued" value={stats.pending_videos || 0} icon={<VideoIcon className="text-indigo-400" size={20} />} />
               <StatCard label="Active" value={stats.active} icon={<Activity className="text-blue-400" size={20} />} />
               <StatCard label="Completed" value={stats.completed} icon={<CheckCircle className="text-emerald-400" size={20} />} />
               <StatCard label="Failed" value={stats.failed} icon={<XCircle className="text-rose-400" size={20} />} />
@@ -216,21 +220,30 @@ export function AdminPage() {
           {/* Queue Filter Bar */}
           <Card className="bg-zinc-900/40 backdrop-blur-sm border-zinc-800/50 p-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
+                {TYPE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => {
+                      setTypeFilter(opt.value);
+                      resetPage();
+                    }}
+                    className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
+                      typeFilter === opt.value
+                        ? 'bg-zinc-800 text-white shadow-lg'
+                        : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
               <div className="flex items-center gap-3">
                 <Select
                   options={STATUS_OPTIONS}
                   value={statusFilter}
                   onChange={(e) => {
                     setStatusFilter(e.target.value);
-                    resetPage();
-                  }}
-                  className="w-40 bg-zinc-950 border-zinc-800 h-9"
-                />
-                <Select
-                  options={TYPE_OPTIONS}
-                  value={typeFilter}
-                  onChange={(e) => {
-                    setTypeFilter(e.target.value);
                     resetPage();
                   }}
                   className="w-40 bg-zinc-950 border-zinc-800 h-9"
